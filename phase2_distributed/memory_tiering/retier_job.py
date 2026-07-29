@@ -1,0 +1,109 @@
+"""
+Memory Lifecycle — "Age and Retire" (SDD Phase 2, Section 12.2):
+  Age:   a scheduled job re-tiers memories hot -> warm -> cold based on age.
+  Retire: cold memories are exported via CDC to S3 and an audit_log entry
+          is recorded for the export.
+
+In AWS this is a scheduled Lambda (Section 4.1 / 23, week 9). Locally it's
+a plain function you can invoke on demand, from a cron entry, or wired
+into APScheduler — no extra infra required to see the full lifecycle work
+end-to-end, consistent with Phase 1's zero-mandatory-cloud-dependency
+principle carried into Phase 2.
+
+The "S3 export" is a local JSON file written under ./s3_lake/ standing in
+for a real S3 URI (s3://aquamind-cold-tier/...) — swap `_export_to_lake`
+for a boto3 S3 put_object call to point this at real S3 without changing
+the rest of the tiering logic.
+
+Usage (from the repo root, with phase1_standalone importable):
+    PYTHONPATH=phase1_standalone:. python -m phase2_distributed.memory_tiering.retier_job
+"""
+import json
+import os
+from datetime import datetime, timedelta
+
+import phase2_distributed.common.pathsetup  # noqa: F401
+from app import models
+from app.database import SessionLocal
+
+from phase2_distributed.common.models_ext import CDCExportLog
+
+HOT_WINDOW = timedelta(hours=24)
+WARM_WINDOW = timedelta(days=90)
+S3_LAKE_DIR = os.environ.get("AQUAMIND_S3_LAKE_DIR", "./s3_lake")
+
+
+def _export_to_lake(memory: models.Memory, now: datetime) -> str:
+    """Writes a local JSON stand-in for the S3 cold-tier export and returns
+    the (simulated) s3:// URI recorded in cdc_export_log."""
+    os.makedirs(S3_LAKE_DIR, exist_ok=True)
+    key = f"cold_{memory.memory_id}.json"
+    path = os.path.join(S3_LAKE_DIR, key)
+    with open(path, "w") as f:
+        json.dump(
+            {
+                "memory_id": memory.memory_id,
+                "type": memory.type,
+                "summary_text": memory.summary_text,
+                "created_at": memory.created_at.isoformat(),
+                "exported_at": now.isoformat(),
+            },
+            f,
+            indent=2,
+        )
+    return f"s3://aquamind-cold-tier/cold/{key}"
+
+
+def retier_memories(db=None, now=None) -> dict:
+    """
+    Re-tiers every memory row by age and exports newly-cold memories to the
+    (simulated) S3 cold tier. Returns a summary dict of counts, useful for
+    logging/tests. Safe to call repeatedly (idempotent export — a memory is
+    only exported once, tracked via CDCExportLog).
+    """
+    own_session = db is None
+    db = db or SessionLocal()
+    now = now or datetime.utcnow()
+
+    counts = {"hot": 0, "warm": 0, "cold": 0, "exported": 0}
+
+    try:
+        memories = db.query(models.Memory).all()
+        for memory in memories:
+            age = now - memory.created_at
+            if age <= HOT_WINDOW:
+                new_tier = "hot"
+            elif age <= WARM_WINDOW:
+                new_tier = "warm"
+            else:
+                new_tier = "cold"
+
+            if new_tier != memory.tier:
+                memory.tier = new_tier
+            counts[new_tier] += 1
+
+            if new_tier == "cold":
+                already_exported = (
+                    db.query(CDCExportLog).filter(CDCExportLog.memory_id == memory.memory_id).first()
+                )
+                if not already_exported:
+                    s3_uri = _export_to_lake(memory, now)
+                    db.add(CDCExportLog(memory_id=memory.memory_id, s3_uri=s3_uri))
+                    db.add(
+                        models.AuditLog(
+                            actor="cdc_export_job", action="memory.cdc_export", entity_ref=memory.memory_id
+                        )
+                    )
+                    counts["exported"] += 1
+
+        db.commit()
+    finally:
+        if own_session:
+            db.close()
+
+    return counts
+
+
+if __name__ == "__main__":
+    result = retier_memories()
+    print(f"[retier_job] Memory tiering complete: {result}")
