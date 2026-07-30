@@ -1,14 +1,29 @@
 # AquaRack — Agentic Digital Twin for Data Center Water & Cooling Optimization
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://reactjs.org/)
 [![CockroachDB](https://img.shields.io/badge/CockroachDB-6933FF?style=for-the-badge&logo=cockroachlabs&logoColor=white)](https://www.cockroachlabs.com/)
 [![Amazon Bedrock](https://img.shields.io/badge/Amazon_Bedrock-FF9900?style=for-the-badge&logo=amazonaws&logoColor=white)](https://aws.amazon.com/bedrock/)
 [![LangChain](https://img.shields.io/badge/LangChain-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white)](https://www.langchain.com/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
-[![Three.js](https://img.shields.io/badge/Three.js-000000?style=for-the-badge&logo=three.js&logoColor=white)](https://threejs.org/)
 
 > **AquaRack** is an enterprise-grade Agentic Digital Twin platform designed to forecast thermal load, optimize cooling demand, and dramatically reduce cooling-water consumption (WUE) in high-density AI data centers.
+
+---
+
+## 🏆 CockroachDB × AWS Hackathon Submission Checklist
+
+### 1. CockroachDB Tools Used (Min. 2 Required — Used 2)
+- 🔌 **CockroachDB Cloud Managed MCP Server (`https://cockroachlabs.cloud/mcp`)**: Connects AI agents directly to CockroachDB clusters with zero raw-SQL queries. Exposes high-level tools (`retrieve_similar_incidents`, `retrieve_previous_recommendations`, `store_agent_memory`). Implemented in `app/mcp/server.py` & `app/mcp/tools.py`.
+- 🧠 **CockroachDB Distributed Vector Indexing**: Stores Titan 384-dimensional embeddings in CockroachDB and executes in-database similarity search via native `<=>` cosine-distance operators. Implemented in `app/memory_engine/vector_index.py`.
+
+### 2. AWS Services Used (Min. 1 Required — Used 2)
+- 🤖 **Amazon Bedrock Reasoning (`anthropic.claude-3-haiku`)**: Powers the LangChain `ChatBedrockConverse` structured output reasoning chain (`RecommendationOutput`), outputting actionable cooling decisions with confidence scores and cited memory IDs.
+- 📐 **Amazon Bedrock Titan Embeddings (`amazon.titan-embed-text-v2:0`)**: Generates real-time vector embeddings for telemetry events and memory retrieval.
+
+### 3. Open Source & License Compliance
+- 📄 **License**: Open Source under the **MIT License** (see [LICENSE](file:///d:/Projects/RackPulse/LICENSE)).
 
 ---
 
@@ -168,23 +183,15 @@ Run automated pytest suite verifying telemetry ingestion, thermodynamic water ca
 pytest tests/ -v
 ```
 
-To run a production build of the Vite frontend:
-```bash
-cd frontend
-npm run build
-```
-
 ---
 
-## 📜 Tech Stack Summary
+## 💡 Feedback on CockroachDB AI Tools
 
-- **Backend**: FastAPI, SQLAlchemy, Pydantic, Uvicorn, Python 3.14
-- **AI & Reasoning**: Amazon Bedrock (`amazon.titan-embed-text-v2`, `anthropic.claude-3-haiku`), LangChain, Model Context Protocol (MCP)
-- **Database**: CockroachDB (Native Vector Indexing, `<=>` Cosine Distance)
-- **Frontend**: React 18, Vite 8, Tailwind CSS v4, Three.js, React Three Fiber, Lucide Icons, Framer Motion
+1. **Managed MCP Server**: The ability to expose database state and vector search directly over MCP eliminates custom API glue code and provides auditability out of the box.
+2. **Distributed Vector Indexing (`<=>`)**: Performing vector distance calculations directly inside CockroachDB eliminates the operational complexity of maintaining a separate vector database.
 
 ---
 
 ## 📄 License
 
-Distributed under the MIT License. See `LICENSE` for details.
+Distributed under the **MIT License**. See [LICENSE](LICENSE) for details.
