@@ -21,7 +21,7 @@ services:
       - cockroach-data:/cockroach/cockroach-data
 
   app:
-    build: .
+    build: ./backend
     ports:
       - "8000:8000"
     environment:
