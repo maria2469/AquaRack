@@ -31,8 +31,7 @@ export default function Navbar() {
               to={l.to}
               end={l.end}
               className={({ isActive }) =>
-                `px-3 py-2 text-sm font-medium font-body rounded-full transition-colors ${
-                  isActive ? "text-white bg-white/10" : "text-white/70 hover:text-white"
+                `px-3 py-2 text-sm font-medium font-body rounded-full transition-colors ${isActive ? "text-white bg-white/10" : "text-white/70 hover:text-white"
                 }`
               }
             >
@@ -66,8 +65,7 @@ export default function Navbar() {
               end={l.end}
               onClick={() => setOpen(false)}
               className={({ isActive }) =>
-                `px-3.5 py-2.5 rounded-lg text-sm font-medium font-body ${
-                  isActive ? "text-white bg-white/10" : "text-white/70"
+                `px-3.5 py-2.5 rounded-lg text-sm font-medium font-body ${isActive ? "text-white bg-white/10" : "text-white/70"
                 }`
               }
             >

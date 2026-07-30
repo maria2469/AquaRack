@@ -1,3 +1,6 @@
 .env
 .venv
 .env.example
+
+aquamind.log
+collector_queue.db

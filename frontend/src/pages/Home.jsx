@@ -152,11 +152,12 @@ export default function Home() {
 
       {/* ---------------- SECTION 2: CAPABILITIES ---------------- */}
       <section className="relative min-h-screen overflow-hidden bg-black">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_50%_at_50%_0%,rgba(255,255,255,0.06),transparent)]" />
         <AmbientVeil dense />
 
         <div className="relative z-10 px-8 md:px-16 lg:px-20 pt-24 pb-10 flex flex-col min-h-screen">
           <div className="mb-auto">
-            <p className="text-sm font-body text-white/60 mb-6">// The reasoning loop</p>
+            <p className="text-sm font-body text-white/60 mb-6">// Capabilities</p>
             <h2 className="font-heading text-6xl md:text-7xl lg:text-[6rem] text-white leading-[0.9] tracking-[-3px]">
               Telemetry in,
               <br />
@@ -165,38 +166,42 @@ export default function Home() {
           </div>
 
           <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-6">
-            {capabilities.map((c) => (
+            {capabilities.map((c, i) => (
               <motion.div
                 key={c.title}
                 initial={{ filter: "blur(10px)", opacity: 0, y: 20 }}
                 whileInView={{ filter: "blur(0px)", opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-80px" }}
-                transition={{ duration: 0.8, ease: "easeOut" }}
-                className="liquid-glass rounded-[1.25rem] p-6 min-h-[360px] flex flex-col"
+                transition={{ duration: 0.8, ease: "easeOut", delay: i * 0.1 }}
+                className="liquid-glass rounded-[1.25rem] p-7 min-h-[380px] flex flex-col"
               >
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center justify-between">
                   <div className="liquid-glass h-11 w-11 rounded-[0.75rem] flex items-center justify-center shrink-0">
                     <c.icon size={20} className="text-white" />
                   </div>
-                  <div className="flex flex-wrap gap-1.5 justify-end">
-                    {c.tags.map((t) => (
-                      <span
-                        key={t}
-                        className="liquid-glass rounded-full px-3 py-1 text-[11px] text-white/90 font-body whitespace-nowrap"
-                      >
-                        {t}
-                      </span>
-                    ))}
-                  </div>
+                  <span className="font-heading text-xl text-white/30 tracking-[-1px]">
+                    0{i + 1}
+                  </span>
                 </div>
 
-                <div className="flex-1" />
+                <div className="mt-6 flex flex-wrap gap-2">
+                  {c.tags.map((t) => (
+                    <span
+                      key={t}
+                      className="liquid-glass rounded-full px-3 py-1.5 text-[11px] text-white/80 font-body whitespace-nowrap"
+                    >
+                      {t}
+                    </span>
+                  ))}
+                </div>
+
+                <div className="flex-1 min-h-8" />
 
                 <div>
                   <h3 className="font-heading text-3xl md:text-4xl text-white tracking-[-1px] leading-none">
                     {c.title}
                   </h3>
-                  <p className="mt-3 text-sm text-white/90 font-body font-light leading-snug max-w-[32ch]">
+                  <p className="mt-3 text-sm text-white/70 font-body font-light leading-relaxed max-w-[34ch]">
                     {c.body}
                   </p>
                 </div>
