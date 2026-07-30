@@ -13,41 +13,41 @@ const fadeUp = {
 const stages = [
   {
     icon: Gauge,
-    title: "1. Live Telemetry Collection",
-    tag: "Every 5 seconds",
-    body: "A lightweight collector continuously polls CPU, GPU, RAM, disk, battery, and fan telemetry from real hardware, normalises it into a shared schema, and buffers locally if the connection drops — replaying on reconnect so no reading is lost.",
+    title: "1. Telemetry Collector",
+    tag: "FR-1.1 – FR-1.3",
+    body: "A lightweight local daemon polls CPU, GPU, RAM, disk, battery, and fan telemetry every 5 seconds, normalises it into a shared JSON schema, and buffers locally in SQLite if the API is unreachable — replaying on reconnect.",
   },
   {
     icon: Thermometer,
     title: "2. Digital Twin Engine",
-    tag: "Real-time",
-    body: "Maps live utilisation onto a configurable rack profile, producing a continuously updated thermal load estimate — the same signal a facility engineer would be watching, computed automatically.",
+    tag: "FR-1.4",
+    body: "Maps single-device utilisation onto a configurable synthetic rack profile, producing a rack-equivalent utilisation and thermal load estimate — without needing real data-centre hardware.",
   },
   {
     icon: Droplets,
     title: "3. Water Thermodynamic Model",
-    tag: "Real-time",
-    body: "Converts thermal load into cooling demand (kW) and estimated water consumption (L/hr) using PUE, WUE, and a psychrometric evaporation approximation from live ambient temperature and humidity.",
+    tag: "FR-1.5",
+    body: "Converts thermal load into cooling demand (kW) and estimated water consumption (L/hr) using PUE, WUE, and a psychrometric evaporation approximation from ambient temperature and humidity.",
   },
   {
     icon: Database,
     title: "4. Memory Engine",
-    tag: "Continuous",
-    body: "Every significant event is summarised, embedded, and stored with a retrievable vector index — a growing institutional memory the AI agent draws on for every new decision.",
+    tag: "FR-1.6",
+    body: "Every significant event is summarised, embedded, and stored in CockroachDB with a retrievable vector index — the institutional memory the AI agent reasons over.",
   },
   {
     icon: BrainCircuit,
     title: "5. AI Decision Agent",
-    tag: "On demand",
-    body: "Retrieves the most similar past incidents via similarity search, reasons over current live state plus retrieved context, and produces a recommendation with a confidence score and cited evidence.",
+    tag: "FR-1.7",
+    body: "Retrieves the top-K most similar past memories via cosine similarity search, reasons over current state plus retrieved context, and produces a natural-language recommendation with a confidence score and cited memory IDs.",
   },
 ];
 
 const principles = [
-  "Reasons over live telemetry, not batch reports or offline simulation — every recommendation reflects what's happening right now.",
-  "Runs with zero mandatory paid cloud dependency: local buffering, a deterministic rules-based fallback, and free-tier storage.",
-  "Every recommendation is explainable — it stores exactly which past events it was grounded in.",
-  "Water usage estimates are sanity-checked against published industry benchmarks (0.5–2.0 L/kWh) automatically.",
+  "Same data contracts, same API shapes, same database schema across Phase 1 and Phase 2 — nothing gets rewritten to scale up.",
+  "Zero mandatory cloud dependency: SQLite fallback, mockable Bedrock calls, single-node CockroachDB free tier.",
+  "Every recommendation is explainable — it stores exactly which memories it was grounded in.",
+  "Model outputs are sanity-checked against published industry WUE benchmarks (0.5–2.0 L/kWh) as an automated test.",
 ];
 
 export default function Solution() {
@@ -64,19 +64,19 @@ export default function Solution() {
           </motion.span>
           <motion.h1
             variants={fadeUp} initial="hidden" animate="show" custom={1}
-            className="font-display text-4xl md:text-5xl font-semibold text-frost leading-tight max-w-3xl"
+            className="font-heading text-4xl md:text-5xl font-semibold text-frost leading-tight max-w-3xl"
           >
-            One live reasoning loop that connects
+            One reasoning loop that connects
             <span className="text-gradient-coolant"> compute, cooling, and memory.</span>
           </motion.h1>
           <motion.p
             variants={fadeUp} initial="hidden" animate="show" custom={2}
             className="mt-6 text-lg text-mist leading-relaxed max-w-2xl"
           >
-            AquaMind AI ingests real telemetry as it happens, simulates thermal
-            behaviour, estimates water and cooling demand, retrieves relevant
-            past incidents, and produces an explainable AI recommendation —
-            end to end, in under 5 seconds.
+            AquaMind AI is a digital twin that ingests real telemetry, simulates
+            thermal behaviour, estimates water and cooling demand, retrieves
+            relevant past incidents, and produces an explainable AI recommendation
+            — end to end, in under 5 seconds.
           </motion.p>
         </div>
       </section>
@@ -96,7 +96,7 @@ export default function Solution() {
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-3 flex-wrap mb-1.5">
-                    <h3 className="font-display font-semibold text-frost text-lg">{s.title}</h3>
+                    <h3 className="font-heading font-semibold text-frost text-lg">{s.title}</h3>
                     <span className="font-mono text-[11px] text-flow bg-flow/10 border border-flow/20 rounded px-2 py-0.5">
                       {s.tag}
                     </span>
@@ -120,14 +120,14 @@ export default function Solution() {
             <span className="text-xs uppercase tracking-[0.18em] text-flow font-mono flex items-center gap-2">
               <Layers size={13} /> Design principles
             </span>
-            <h2 className="font-display text-3xl font-semibold text-frost mt-3 leading-tight">
-              Built for the problem as it actually happens.
+            <h2 className="font-heading text-3xl font-semibold text-frost mt-3 leading-tight">
+              Built to scale without a rewrite.
             </h2>
             <p className="text-mist mt-4 leading-relaxed">
-              Cooling and water decisions are time-sensitive — by the time a
-              monthly report flags a problem, the opportunity to act on it is
-              gone. This system closes that gap by reasoning continuously,
-              on live data, the moment a pattern emerges.
+              Phase 1 proves the full workflow on a single laptop. Phase 2 promotes
+              the exact same modules — Digital Twin, Water Model, Memory Engine,
+              AI Agent — into a distributed, multi-agent system. The schema and API
+              contracts never change.
             </p>
           </motion.div>
 

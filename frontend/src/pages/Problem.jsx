@@ -44,7 +44,7 @@ export default function Problem() {
           </motion.span>
           <motion.h1
             variants={fadeUp} initial="hidden" animate="show" custom={1}
-            className="font-display text-4xl md:text-5xl font-semibold text-frost leading-tight max-w-3xl"
+            className="font-heading text-4xl md:text-5xl font-semibold text-frost leading-tight max-w-3xl"
           >
             Compute has a water footprint —
             <span className="text-gradient-coolant"> and almost nobody sees it in real time.</span>
@@ -92,7 +92,7 @@ export default function Problem() {
                   <p.icon size={18} className="text-alert" />
                 </div>
                 <div>
-                  <h3 className="font-display font-semibold text-frost mb-1.5">{p.title}</h3>
+                  <h3 className="font-heading font-semibold text-frost mb-1.5">{p.title}</h3>
                   <p className="text-sm text-mist leading-relaxed">{p.body}</p>
                 </div>
               </motion.div>

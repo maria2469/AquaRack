@@ -1,0 +1,38 @@
+# AquaMind AI — single app container + CockroachDB (SDD Tech Stack).
+#
+# Usage: docker compose up --build
+# Then:  http://localhost:8000            (API + dashboard)
+#        http://localhost:8080            (CockroachDB Admin UI)
+#        http://localhost:8000/api/v1/agent/trace/stream  (live agent reasoning, SSE)
+#
+# To enable Bedrock reasoning (on by default, see app/config.py), supply
+# AWS credentials via a .env file at the repo root or an AWS profile.
+
+version: "3.9"
+
+services:
+  cockroachdb:
+    image: cockroachdb/cockroach:v23.2.0
+    command: start-single-node --insecure
+    ports:
+      - "26257:26257"
+      - "8080:8080"
+    volumes:
+      - cockroach-data:/cockroach/cockroach-data
+
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=cockroachdb://root@cockroachdb:26257/aquamind?sslmode=disable
+      - BEDROCK_ENABLED=${BEDROCK_ENABLED:-true}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
+    depends_on:
+      - cockroachdb
+
+volumes:
+  cockroach-data:

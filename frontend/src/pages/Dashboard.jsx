@@ -96,7 +96,7 @@ export default function Dashboard() {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
               <span className="text-xs uppercase tracking-[0.18em] text-flow font-mono">Operations</span>
-              <h1 className="font-display text-3xl md:text-4xl font-semibold text-frost mt-2">
+              <h1 className="font-heading text-3xl md:text-4xl font-semibold text-frost mt-2">
                 Live Digital Twin Dashboard
               </h1>
             </div>
@@ -126,7 +126,7 @@ export default function Dashboard() {
           {/* TELEMETRY CHART */}
           <div className="lg:col-span-2 card-glass rounded-2xl p-6">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="font-display font-semibold text-frost">Telemetry Stream</h2>
+              <h2 className="font-heading font-semibold text-frost">Telemetry Stream</h2>
               <span className="font-mono text-xs text-mist">device: {telemetry?.device_id ?? "—"}</span>
             </div>
             <div className="h-64">
@@ -167,7 +167,7 @@ export default function Dashboard() {
           {/* AI RECOMMENDATION */}
           <div className="card-glass rounded-2xl p-6 flex flex-col">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-display font-semibold text-frost flex items-center gap-2">
+              <h2 className="font-heading font-semibold text-frost flex items-center gap-2">
                 <BrainCircuit size={17} className="text-coolant-2" /> AI Recommendation
               </h2>
             </div>
@@ -201,7 +201,7 @@ export default function Dashboard() {
         <div className="grid lg:grid-cols-3 gap-6">
           {/* MEMORY SEARCH */}
           <div className="lg:col-span-2 card-glass rounded-2xl p-6">
-            <h2 className="font-display font-semibold text-frost mb-4">Memory Search (RAG)</h2>
+            <h2 className="font-heading font-semibold text-frost mb-4">Memory Search (RAG)</h2>
             <form onSubmit={handleSearch} className="flex gap-2 mb-4">
               <input
                 value={query}
@@ -240,7 +240,7 @@ export default function Dashboard() {
 
           {/* REPORTS */}
           <div className="card-glass rounded-2xl p-6">
-            <h2 className="font-display font-semibold text-frost mb-4">Daily Report</h2>
+            <h2 className="font-heading font-semibold text-frost mb-4">Daily Report</h2>
             <p className="text-sm text-mist leading-relaxed mb-5">
               Export the last 24 hours of telemetry, water estimates, and
               recommendations.

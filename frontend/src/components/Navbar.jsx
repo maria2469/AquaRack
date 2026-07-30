@@ -1,81 +1,64 @@
 import { useState, useEffect } from "react";
 import { NavLink } from "react-router-dom";
 import { Menu, X, Droplets } from "lucide-react";
+import { ArrowUpRightIcon } from "./ui/icons";
 
 const links = [
   { to: "/", label: "Home", end: true },
-  { to: "/problem", label: "The Problem" },
+  { to: "/problem", label: "Problem" },
   { to: "/solution", label: "Solution" },
-  { to: "/dashboard", label: "Live Dashboard" },
+  { to: "/dashboard", label: "Dashboard" },
   { to: "/about", label: "About" },
 ];
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
-
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 12);
-    window.addEventListener("scroll", onScroll);
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
 
   return (
-    <header
-      className={`fixed top-0 inset-x-0 z-50 transition-colors duration-300 ${
-        scrolled ? "bg-abyss/85 backdrop-blur-md border-b border-rack" : "bg-transparent"
-      }`}
-    >
-      <nav className="max-w-7xl mx-auto px-5 md:px-8 h-16 flex items-center justify-between">
-        <NavLink to="/" className="flex items-center gap-2 group">
-          <span className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-hall-3 border border-rack-2 group-hover:border-coolant transition-colors">
-            <Droplets size={16} className="text-flow" strokeWidth={2.2} />
-          </span>
-          <span className="font-display font-semibold text-frost tracking-tight text-lg">
-            AquaMind <span className="text-coolant-2">AI</span>
-          </span>
+    <header className="fixed top-4 left-0 right-0 z-50 px-4 md:px-8 lg:px-16">
+      <nav className="max-w-7xl mx-auto flex items-center justify-between">
+        <NavLink
+          to="/"
+          className="liquid-glass flex h-12 w-12 items-center justify-center rounded-full shrink-0"
+        >
+          <Droplets size={18} className="text-white" strokeWidth={2.2} />
         </NavLink>
 
-        <div className="hidden md:flex items-center gap-1">
+        <div className="hidden md:flex items-center gap-1 liquid-glass rounded-full px-1.5 py-1.5">
           {links.map((l) => (
             <NavLink
               key={l.to}
               to={l.to}
               end={l.end}
               className={({ isActive }) =>
-                `px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? "text-frost bg-hall-3"
-                    : "text-mist hover:text-fog hover:bg-hall-2"
+                `px-3 py-2 text-sm font-medium font-body rounded-full transition-colors ${
+                  isActive ? "text-white bg-white/10" : "text-white/70 hover:text-white"
                 }`
               }
             >
               {l.label}
             </NavLink>
           ))}
-        </div>
-
-        <div className="hidden md:block">
           <NavLink
             to="/dashboard"
-            className="inline-flex items-center gap-2 rounded-lg bg-coolant/90 hover:bg-coolant px-4 py-2 text-sm font-semibold text-abyss transition-colors shadow-[0_0_20px_-4px_rgba(43,127,255,0.6)]"
+            className="ml-1 inline-flex items-center gap-1.5 rounded-full bg-white text-black px-4 py-2 text-sm font-medium font-body hover:bg-white/90 transition-colors"
           >
-            Open Dashboard
+            Open Dashboard <ArrowUpRightIcon size={14} />
           </NavLink>
         </div>
 
         <button
-          className="md:hidden text-fog p-2"
+          className="md:hidden liquid-glass h-12 w-12 rounded-full flex items-center justify-center text-white"
           onClick={() => setOpen((o) => !o)}
           aria-label={open ? "Close menu" : "Open menu"}
           aria-expanded={open}
         >
-          {open ? <X size={22} /> : <Menu size={22} />}
+          {open ? <X size={20} /> : <Menu size={20} />}
         </button>
       </nav>
 
       {open && (
-        <div className="md:hidden bg-abyss/97 backdrop-blur-md border-t border-rack px-5 pb-5 pt-2 flex flex-col gap-1">
+        <div className="md:hidden mt-3 liquid-glass rounded-3xl px-5 py-4 flex flex-col gap-1 max-w-7xl mx-auto">
           {links.map((l) => (
             <NavLink
               key={l.to}
@@ -83,14 +66,21 @@ export default function Navbar() {
               end={l.end}
               onClick={() => setOpen(false)}
               className={({ isActive }) =>
-                `px-3.5 py-2.5 rounded-lg text-sm font-medium ${
-                  isActive ? "text-frost bg-hall-3" : "text-mist"
+                `px-3.5 py-2.5 rounded-lg text-sm font-medium font-body ${
+                  isActive ? "text-white bg-white/10" : "text-white/70"
                 }`
               }
             >
               {l.label}
             </NavLink>
           ))}
+          <NavLink
+            to="/dashboard"
+            onClick={() => setOpen(false)}
+            className="mt-2 inline-flex items-center justify-center gap-1.5 rounded-full bg-white text-black px-4 py-2.5 text-sm font-medium font-body"
+          >
+            Open Dashboard <ArrowUpRightIcon size={14} />
+          </NavLink>
         </div>
       )}
     </header>

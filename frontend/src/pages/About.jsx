@@ -43,7 +43,7 @@ export default function About() {
           </motion.span>
           <motion.h1
             variants={fadeUp} initial="hidden" animate="show" custom={1}
-            className="font-display text-4xl md:text-5xl font-semibold text-frost leading-tight max-w-3xl"
+            className="font-heading text-4xl md:text-5xl font-semibold text-frost leading-tight max-w-3xl"
           >
             A digital twin, built in two phases,
             <span className="text-gradient-coolant"> on one architecture.</span>
@@ -73,7 +73,7 @@ export default function About() {
               </div>
               <div>
                 <div className="flex items-center gap-3 mb-2">
-                  <h3 className="font-display font-semibold text-frost text-lg">{p.title}</h3>
+                  <h3 className="font-heading font-semibold text-frost text-lg">{p.title}</h3>
                   <span className="text-xs font-mono text-signal bg-signal/10 border border-signal/20 rounded px-2 py-0.5">
                     {p.status}
                   </span>
@@ -92,7 +92,7 @@ export default function About() {
             <span className="text-xs uppercase tracking-[0.18em] text-flow font-mono flex items-center gap-2">
               <Cpu size={13} /> Technology
             </span>
-            <h2 className="font-display text-3xl font-semibold text-frost mt-3">The stack underneath</h2>
+            <h2 className="font-heading text-3xl font-semibold text-frost mt-3">The stack underneath</h2>
           </motion.div>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -102,7 +102,7 @@ export default function About() {
                 variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }} custom={i}
                 className="card-glass rounded-2xl p-6"
               >
-                <h3 className="font-display font-semibold text-frost mb-4 text-sm uppercase tracking-wide">
+                <h3 className="font-heading font-semibold text-frost mb-4 text-sm uppercase tracking-wide">
                   {s.group}
                 </h3>
                 <ul className="space-y-2">
