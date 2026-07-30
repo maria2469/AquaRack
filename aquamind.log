@@ -1,3 +1,0 @@
-2026-07-30 16:25:03,723 INFO aquamind: AquaMind AI started. DB=cockroachdb+psycopg://maria:-iEqjedXGUm7GO1BORulcg@crying-snorter-30365.j77.aws-us-east-1.cockroachlabs.cloud:26257/Rackpulse?sslmode=verify-full (CockroachDB=False) Bedrock/LangChain enabled=True
-2026-07-30 16:31:26,256 INFO aquamind: AquaMind AI started. DB=cockroachdb+psycopg://maria:-iEqjedXGUm7GO1BORulcg@crying-snorter-30365.j77.aws-us-east-1.cockroachlabs.cloud:26257/Rackpulse?sslmode=verify-full (CockroachDB=False) Bedrock/LangChain enabled=True
-2026-07-30 16:31:50,818 INFO aquamind: AquaMind AI started. DB=cockroachdb+psycopg://maria:-iEqjedXGUm7GO1BORulcg@crying-snorter-30365.j77.aws-us-east-1.cockroachlabs.cloud:26257/Rackpulse?sslmode=verify-full (CockroachDB=False) Bedrock/LangChain enabled=True

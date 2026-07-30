@@ -4,3 +4,12 @@
 
 aquamind.log
 collector_queue.db
+node_modules
+dist
+.env
+.env.local
+*.log
+.DS_Store
+
+
+aquamind.log
