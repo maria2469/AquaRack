@@ -222,3 +222,49 @@ def submit_job(db, spec: dict) -> SimulationJob:
     thread = threading.Thread(target=_run_job, args=(job.job_id, spec), daemon=True)
     thread.start()
     return job
+
+
+def simulate_scaled_racks(db, laptop_telemetry: models.Telemetry, num_racks: int = 100) -> dict:
+    """
+    Scales single laptop telemetry (Rack 1) across Racks 2 to num_racks.
+    Calculates aggregated fleet thermal load, GPU power draw, and water consumption.
+    """
+    base_cpu = laptop_telemetry.cpu_pct
+    base_gpu = laptop_telemetry.gpu_pct or 0.0
+    base_water = laptop_telemetry.predicted_water_usage or 1.2
+
+    racks = []
+    total_water = 0.0
+    total_thermal_kw = 0.0
+
+    for r in range(1, num_racks + 1):
+        if r == 1:
+            rack_cpu = base_cpu
+            rack_gpu = base_gpu
+        else:
+            # Add synthetic variation across racks
+            rack_cpu = _clamp(base_cpu + random.uniform(-15.0, 15.0))
+            rack_gpu = _clamp(base_gpu + random.uniform(-20.0, 20.0))
+
+        thermal_kw = (rack_cpu * 0.03 + rack_gpu * 0.05) + 2.0
+        water_l_hr = base_water * (0.8 + 0.4 * (rack_gpu / 100.0))
+        total_water += water_l_hr
+        total_thermal_kw += thermal_kw
+
+        racks.append({
+            "rack_id": f"Rack-{r}",
+            "is_laptop": (r == 1),
+            "cpu_pct": round(rack_cpu, 1),
+            "gpu_pct": round(rack_gpu, 1),
+            "thermal_kw": round(thermal_kw, 2),
+            "water_l_hr": round(water_l_hr, 2),
+        })
+
+    return {
+        "rack_count": num_racks,
+        "rack_1_laptop": racks[0],
+        "fleet_total_water_l_hr": round(total_water, 2),
+        "fleet_total_thermal_kw": round(total_thermal_kw, 2),
+        "racks_sample": racks[:10],
+    }
+

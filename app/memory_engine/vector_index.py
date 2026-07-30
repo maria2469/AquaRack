@@ -34,52 +34,48 @@ logger = logging.getLogger("aquamind.vector_index")
 _ensured_dims: set[int] = set()
 
 
-def ensure_native_vector_column(db: Session, dim: int) -> None:
+def ensure_native_vector_column(db: Session, dim: int, table_name: str = "embeddings") -> None:
     """Idempotently add a native VECTOR(dim) column + index on CockroachDB."""
-    if not IS_COCKROACHDB or dim in _ensured_dims:
+    if not IS_COCKROACHDB or (dim, table_name) in _ensured_dims:
         return
     try:
-        db.execute(text(f"ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS vector_native VECTOR({dim})"))
-        # CockroachDB vector indexing (C-SPANN, v25.2+); safe to attempt and
-        # ignore if the running cluster version doesn't support indexed
-        # vector columns yet — <=> search still works as an unindexed scan.
+        db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS vector_native VECTOR({dim})"))
         try:
             db.execute(
                 text(
-                    "CREATE VECTOR INDEX IF NOT EXISTS embeddings_vector_native_idx "
-                    "ON embeddings (vector_native)"
+                    f"CREATE VECTOR INDEX IF NOT EXISTS {table_name}_vector_native_idx "
+                    f"ON {table_name} (vector_native)"
                 )
             )
         except Exception as exc:  # noqa: BLE001
-            logger.info("Vector index not created (cluster may not support it yet): %s", exc)
+            logger.info("Vector index on %s not created: %s", table_name, exc)
         db.commit()
-        _ensured_dims.add(dim)
+        _ensured_dims.add((dim, table_name))
     except Exception as exc:  # noqa: BLE001
         db.rollback()
-        logger.warning("Could not ensure native vector column: %s", exc)
+        logger.warning("Could not ensure native vector column on %s: %s", table_name, exc)
 
 
-def sync_native_vector(db: Session, embedding_id: str, vector: List[float]) -> None:
+def sync_native_vector(db: Session, embedding_id: str, vector: List[float], table_name: str = "embeddings", id_column: str = "embedding_id") -> None:
     """Mirror a JSON vector into the native VECTOR column for CockroachDB search."""
     if not IS_COCKROACHDB:
         return
-    ensure_native_vector_column(db, len(vector))
+    ensure_native_vector_column(db, len(vector), table_name=table_name)
     try:
         db.execute(
-            text("UPDATE embeddings SET vector_native = :vec WHERE embedding_id = :id"),
+            text(f"UPDATE {table_name} SET vector_native = :vec WHERE {id_column} = :id"),
             {"vec": str(vector), "id": embedding_id},
         )
         db.commit()
     except Exception as exc:  # noqa: BLE001
         db.rollback()
-        logger.warning("Could not sync native vector for embedding %s: %s", embedding_id, exc)
+        logger.warning("Could not sync native vector for %s id %s: %s", table_name, embedding_id, exc)
 
 
 def native_search(db: Session, query_vector: List[float], model_name: str, k: int = 5) -> Optional[List[dict]]:
     """
     Real in-database cosine similarity search via CockroachDB's `<=>`
-    operator. Returns None (caller falls back to Python-side scan) if not
-    running on CockroachDB or if the native column isn't populated yet.
+    operator for memories table.
     """
     if not IS_COCKROACHDB:
         return None
@@ -112,3 +108,40 @@ def native_search(db: Session, query_vector: List[float], model_name: str, k: in
     except Exception as exc:  # noqa: BLE001
         logger.info("Native CockroachDB vector search unavailable, falling back to Python scan: %s", exc)
         return None
+
+
+def native_search_memory_embeddings(db: Session, query_vector: List[float], memory_type: Optional[str] = None, k: int = 5) -> Optional[List[dict]]:
+    """
+    Native vector search over memory_embeddings table using CockroachDB `<=>` cosine distance.
+    """
+    if not IS_COCKROACHDB:
+        return None
+    try:
+        type_clause = "AND memory_type = :mtype" if memory_type else ""
+        query_sql = f"""
+            SELECT id, memory_type, source_id, summary, created_at,
+                   1 - (vector_native <=> :qvec::VECTOR) AS similarity
+            FROM memory_embeddings
+            WHERE vector_native IS NOT NULL {type_clause}
+            ORDER BY vector_native <=> :qvec::VECTOR
+            LIMIT :k
+        """
+        params = {"qvec": str(query_vector), "k": k}
+        if memory_type:
+            params["mtype"] = memory_type
+        rows = db.execute(text(query_sql), params).mappings().all()
+        return [
+            {
+                "id": r["id"],
+                "memory_type": r["memory_type"],
+                "source_id": r["source_id"],
+                "summary": r["summary"],
+                "created_at": r["created_at"],
+                "similarity": round(float(r["similarity"]), 4),
+            }
+            for r in rows
+        ]
+    except Exception as exc:  # noqa: BLE001
+        logger.info("Native CockroachDB vector search on memory_embeddings unavailable: %s", exc)
+        return None
+

@@ -1,93 +1,110 @@
-# AquaMind AI
+# RackPulse — Where AI Learns to Save Water
 
-Digital twin of an AI data centre: telemetry ingestion → digital twin
-simulation → water/cooling model → RAG memory engine → multi-agent AI
-decision system → dashboard/reports. One project, one `app` package, one
-entrypoint.
+**RackPulse** is an enterprise-grade Agentic Digital Twin that drastically reduces cooling-water consumption in AI data centers.
 
-Tech stack (primary, not fallback): **CockroachDB** (data + vector
-memory), **LangChain + Amazon Bedrock** (agent reasoning and embeddings),
-FastAPI, React-free static dashboard.
+It combines:
+- **Live Laptop Telemetry** & AWS CloudWatch Metrics
+- **CockroachDB Managed MCP Server** (Zero-Bypass AI Persistent Agentic Memory)
+- **CockroachDB Distributed Vector Indexing** (In-Database `<=>` Cosine Similarity Search)
+- **Amazon Bedrock Reasoning** (Titan Text Embeddings V2 + Claude Structured Output)
+- **Thermodynamic Water Model** (CPU/GPU load, psychrometric evaporative factors, live weather)
+- **OpenDC Multi-Rack Scaling** (Rack 1 Laptop → Racks 2–100 Simulated Fleet)
+- **React Dashboard & Agent Explanation Panel**
 
-## Structure
+---
+
+## High Level Architecture
 
 ```
-aquamind-ai/
-├── app/
-│   ├── main.py            # single FastAPI app, all routers mounted
-│   ├── config.py, database.py, models.py, models_ext.py, schemas.py, schemas_ext.py
-│   ├── migrate.py, tool_layer.py
-│   ├── routers/            # telemetry, simulate, recommend, memory, dashboard,
-│   │                        # reports, agent_trace, agents_router, fleet_*,
-│   │                        # simulate_opendc, water_model_only, health
-│   ├── agents/              # multi-agent system: orchestrator, memory_rag,
-│   │                        # telemetry_analyst, water_cooling, capacity_planning,
-│   │                        # guardrail_critic, langchain_bedrock, rules_fallback,
-│   │                        # legacy_single_agent_orchestrator
-│   ├── digital_twin/        # laptop_mode, opendc_adapter, cloudsim_adapter
-│   ├── water_model/
-│   ├── memory_engine/       # embed, store, vector_index, summarise, retier_job
-│   ├── observability/       # reasoning_logger — live agent trace (log + SSE)
-│   ├── prompts/             # versioned Bedrock prompt templates
-│   ├── collector/           # telemetry collector daemon
-│   └── cli/                 # headless CLI
-├── dashboard/               # static SPA served by FastAPI, no build step
-├── tests/
-├── docs/
-├── run.py                   # single entrypoint
-├── requirements.txt
-├── Dockerfile
-├── docker-compose.yml       # app + CockroachDB
-└── .env.example
+Laptop Telemetry / OpenDC Simulation
+       ↓
+CockroachDB Database
+       ↓
+Vector Indexing (memory_embeddings)
+       ↓
+CockroachDB Managed MCP Server (retrieve_similar_incidents, retrieve_previous_recommendations)
+       ↓
+Amazon Bedrock Agent Reasoning
+       ↓
+Water Optimization Recommendation
+       ↓
+React Dashboard & Agent Explanation Panel
+       ↓
+Continuous Learning Loop (Store Outcome → Future Memory)
 ```
 
-## Quick start
+---
+
+## Continuous Agentic Memory Loop
+
+```
+Observe Telemetry → Persist Telemetry → Generate Embedding → Vector Index Search via MCP → Bedrock Reasoning → Recommendation → Store Recommendation & Outcome → Future Memory
+```
+
+The AI agent never constructs raw SQL queries directly for memory retrieval; instead, Bedrock queries historical context strictly through the **CockroachDB Managed MCP Server Client**.
+
+---
+
+## Managed MCP Tools Exposed
+
+1. `retrieve_similar_incidents(query_text, k)`
+2. `retrieve_previous_recommendations(query_text, k)`
+3. `retrieve_water_saving_history(rack_id, k)`
+4. `retrieve_high_gpu_events(threshold_pct, k)`
+5. `store_agent_memory(memory_type, source_id, summary)`
+
+---
+
+## Production API Reference
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/telemetry/latest` | Retrieve current live laptop & weather telemetry |
+| `GET` | `/api/incidents` | Retrieve historical incidents |
+| `GET` | `/api/recommendations` | Retrieve past AI recommendations |
+| `POST` | `/api/reason` | Trigger full Bedrock + MCP Agent reasoning loop |
+| `POST` | `/api/memory/search` | Search CockroachDB vector index via MCP tools |
+| `GET` | `/api/memory/history` | List persistent memory embeddings |
+| `GET` | `/api/dashboard` | Aggregated KPI metrics for React frontend |
+| `GET` | `/mcp/tools` | Discover registered MCP tools |
+| `POST` | `/mcp/rpc` | JSON-RPC 2.0 endpoint for CockroachDB Managed MCP Server |
+
+---
+
+## Quick Start
+
+### 1. Database Setup (CockroachDB Cloud or Local Single-Node)
 
 ```bash
 cockroach start-single-node --insecure --listen-addr=localhost:26257 --background
-cockroach sql --insecure --execute="CREATE DATABASE IF NOT EXISTS aquamind;"
+cockroach sql --insecure --execute="CREATE DATABASE IF NOT EXISTS Rackpulse;"
+```
 
-python3 -m venv .venv && source .venv/bin/activate
+### 2. Backend Setup & Run
+
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Or .venv\Scripts\activate on Windows
 pip install -r requirements.txt
-cp .env.example .env      # set AWS credentials to enable Bedrock reasoning
-python run.py             # API + telemetry collector
-# open http://127.0.0.1:8000
+cp .env.example .env
+python run.py
 ```
 
-Or with Docker:
+### 3. Frontend Setup (React / Vite)
 
 ```bash
-docker compose up --build
+cd frontend
+npm install
+npm run dev
 ```
 
-API-only (no collector polling your machine):
+Open `http://localhost:5173` or `http://127.0.0.1:8000` to view the **RackPulse Enterprise Dashboard**.
 
-```bash
-python run.py --no-collector
-```
+---
 
-CLI:
-
-```bash
-python -m app.cli.cli status
-python -m app.cli.cli recommend
-python -m app.cli.cli search "high thermal load"
-```
-
-## Live agent reasoning
-
-```bash
-tail -f aquamind.log
-curl -N http://127.0.0.1:8000/api/v1/agent/trace/stream
-```
-
-## Tests
+## Verification & Testing
 
 ```bash
 pytest tests/ -q
 ```
 
-CockroachDB and Bedrock/LangChain are on by default. If CockroachDB or AWS
-credentials aren't available, the app falls back automatically at runtime
-(SQLite via `DATABASE_URL=sqlite:///...`, deterministic rules-based agent) —
-these are explicit opt-outs for offline dev, not the primary path.

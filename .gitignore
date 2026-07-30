@@ -1,15 +1,55 @@
-.env
-.venv
-.env.example
-
-aquamind.log
-collector_queue.db
-node_modules
-dist
+# Environment & Secrets
 .env
 .env.local
+.env.*.local
+*.env
+!.env.example
+
+# Python & Caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.eggs/
+
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+
+# Local Databases & Storage
+*.db
+*.sqlite
+*.sqlite3
+collector_queue.db
+aquamind_phase1.db
+
+# Logs & Generated Reports
 *.log
-.DS_Store
-
-
 aquamind.log
+aquamind_reasoning.log
+reports/*.pdf
+reports/*.csv
+!reports/.gitkeep
+
+# Node.js & Frontend
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+build/
+.npm/
+
+# OS & Editor Files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo

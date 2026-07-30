@@ -37,7 +37,9 @@ from app.routers import (
     dashboard,
     reports,
     agent_trace,
+    enterprise_api,
 )
+from app.mcp import server as mcp_server
 
 logging.basicConfig(
     level=logging.INFO,
@@ -110,6 +112,10 @@ def on_startup():
     )
 
 
+# Enterprise and MCP routers
+app.include_router(enterprise_api.router)
+app.include_router(mcp_server.router)
+
 # Multi-agent / fleet / simulation routers first so they take precedence
 # on shared paths (notably POST /api/v1/recommend, GET /api/v1/health).
 app.include_router(agents_router.router)
@@ -127,6 +133,7 @@ app.include_router(memory.router)
 app.include_router(dashboard.router)
 app.include_router(reports.router)
 app.include_router(agent_trace.router)
+
 
 
 # --- Serve the dashboard (no Node/build step required) ---

@@ -46,13 +46,15 @@ HUMAN_TEMPLATE = (
 
 
 class RecommendationOutput(BaseModel):
-    """Structured schema the LLM must fill — enforced via LangChain's
-    with_structured_output(), so we never hand-parse free-form JSON."""
+    """Enterprise Structured Output for Amazon Bedrock Reasoning."""
 
-    recommendation: str = Field(description="The operational recommendation, plain English.")
-    confidence: float = Field(description="Confidence in [0,1].", ge=0.0, le=1.0)
-    cited_memory_ids: List[str] = Field(default_factory=list, description="Memory ids actually used.")
-    rationale: str = Field(description="Short reasoning trace justifying the recommendation.")
+    explanation: str = Field(description="Operational summary of current telemetry and water impact.")
+    root_cause: str = Field(description="Diagnosed root cause for thermal/water inefficiency.")
+    recommendation: str = Field(description="Actionable water optimization recommendation.")
+    expected_water_saving: float = Field(description="Estimated water saving percentage (e.g. 17.8).")
+    confidence: float = Field(description="Confidence score in [0.0, 1.0].", ge=0.0, le=1.0)
+    reasoning_summary: str = Field(description="Short reasoning trace justifying the decision.")
+    cited_memory_ids: List[str] = Field(default_factory=list, description="Historical memory IDs referenced.")
 
 
 _llm = None  # lazy singleton, only constructed if BEDROCK_ENABLED
@@ -82,15 +84,13 @@ def invoke_langchain(
     agent_name: str = "water_cooling",
 ) -> Dict:
     """
-    Runs the LangChain prompt -> ChatBedrockConverse -> structured-output
-    chain. Raises on failure; caller (orchestrator/agent) is responsible
-    for falling back to rules_fallback (SDD FR-1.11).
+    Runs the LangChain prompt -> ChatBedrockConverse -> structured-output chain.
     """
     from langchain_core.prompts import ChatPromptTemplate
 
     rl.log_step(
         run_id, agent_name, "reasoning",
-        {"note": "Building LangChain prompt from CONTEXT + retrieved MEMORIES",
+        {"note": "Building LangChain prompt from CONTEXT + retrieved MEMORIES via CockroachDB MCP",
          "memories_used": len(memories)},
     )
 
@@ -104,7 +104,7 @@ def invoke_langchain(
 
     rl.log_step(
         run_id, agent_name, "tool_call",
-        {"note": f"Invoking Amazon Bedrock via LangChain ChatBedrockConverse",
+        {"note": "Invoking Amazon Bedrock via LangChain ChatBedrockConverse",
          "model_id": settings.BEDROCK_TEXT_MODEL_ID, "region": settings.AWS_REGION},
     )
 
@@ -119,6 +119,7 @@ def invoke_langchain(
 
     out = result.model_dump()
     out["agent_name"] = f"bedrock_langchain::{agent_name}"
+    out["rationale"] = out.get("reasoning_summary", out.get("explanation", ""))
 
     rl.log_step(
         run_id, agent_name, "reasoning",
@@ -130,9 +131,7 @@ def invoke_langchain(
 
 def embed_text_langchain(text: str) -> Optional[List[float]]:
     """
-    Real Titan embedding via LangChain's BedrockEmbeddings (Section 11.2 /
-    15.2). Returns None on any failure so callers fall back to the local
-    deterministic embedding (SDD FR-1.11).
+    Real Titan embedding via LangChain's BedrockEmbeddings (Section 11.2 / 15.2).
     """
     from langchain_aws import BedrockEmbeddings
 
@@ -141,3 +140,4 @@ def embed_text_langchain(text: str) -> Optional[List[float]]:
         region_name=settings.AWS_REGION,
     )
     return embedder.embed_query(text)
+

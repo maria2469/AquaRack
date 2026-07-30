@@ -31,24 +31,47 @@ def psychrometric_factor(ambient_temp: float, humidity: float) -> float:
 
 @dataclass
 class WaterModelInput:
-    thermal_load_kw: float
+    cpu_pct: float
+    gpu_pct: float
     ambient_temp: float
     humidity: float
+    wind_speed: float = 5.0
+    pressure: float = 1013.25
+    thermal_load_kw: float = 5.0
+    cooling_strategy: str = "hybrid_evaporative"  # hybrid_evaporative | chilled_water | direct_liquid
+    historical_efficiency: float = 1.0
     pue_thermal_overhead: float = 0.4
-    wue_base: float = 1.0  # L/kWh baseline, industry benchmark ~0.5-2.0
+    wue_base: float = 1.0  # L/kWh baseline
 
 
 class WaterModel:
     """
-    compute_water_usage(load) and compute_cooling_demand() per the SDD
-    Section 7 class diagram (WaterModel.compute_water_usage /
-    compute_cooling_demand).
+    Enhanced Thermodynamic Water & Cooling Model for AI Data Centers.
+    Calculates evaporative losses, heat dissipation from CPU/GPU, environmental factors (wind, pressure),
+    and cooling savings based on AI-selected cooling strategy.
     """
 
-    def __init__(self, ambient_temp: float, humidity: float, pue_thermal_overhead: float = 0.4):
+    STRATEGY_DISCOUNTS = {
+        "hybrid_evaporative": 0.18,  # 18% savings
+        "chilled_water": 0.08,        # 8% savings
+        "direct_liquid": 0.32,        # 32% savings
+    }
+
+    def __init__(
+        self,
+        ambient_temp: float,
+        humidity: float,
+        wind_speed: float = 5.0,
+        pressure: float = 1013.25,
+        pue_thermal_overhead: float = 0.4,
+        cooling_strategy: str = "hybrid_evaporative",
+    ):
         self.ambient_temp = ambient_temp
         self.humidity = humidity
+        self.wind_speed = wind_speed
+        self.pressure = pressure
         self.pue_thermal_overhead = pue_thermal_overhead
+        self.cooling_strategy = cooling_strategy
 
     def compute_cooling_demand(self, thermal_load_kw: float) -> float:
         """Q_cooling (kW) = thermal_load_kw * (1 + PUE_thermal_overhead)"""
@@ -58,25 +81,41 @@ class WaterModel:
         return round(1 + self.pue_thermal_overhead, 3)
 
     def compute_wue_factor(self) -> float:
-        # WUE scales mildly with ambient conditions; base ~1.0 L/kWh,
-        # clamped to the plausible industry band (0.5-2.0 L/kWh).
         factor = psychrometric_factor(self.ambient_temp, self.humidity)
-        wue = 0.8 * (factor / 1.0)
-        return round(max(0.5, min(2.0, wue)), 4)
+        # Higher wind accelerates evaporation slightly, pressure compensates
+        wind_adj = 1.0 + (self.wind_speed / 100.0)
+        wue = 0.8 * (factor / 1.0) * wind_adj
+        return round(max(0.5, min(2.5, wue)), 4)
 
-    def compute_water_usage(self, thermal_load_kw: float) -> dict:
+    def compute_water_usage(self, thermal_load_kw: float, cpu_pct: float = 50.0, gpu_pct: float = 50.0) -> dict:
         """
-        Water_L_per_hr = WUE * IT_Energy_kWh * f(ambient_temp, humidity)
-        Returns the full set of derived metrics for persistence.
+        Calculates IT Thermal Load, Water Consumption (L/hr), Cooling Demand (kW),
+        Cooling Cost ($/hr), and Expected Water Savings (%).
         """
-        cooling_load_kw = self.compute_cooling_demand(thermal_load_kw)
+        # Dynamic thermal load calculation based on CPU and GPU utilization if provided
+        effective_load = thermal_load_kw * (0.3 + 0.3 * (cpu_pct / 100.0) + 0.4 * (gpu_pct / 100.0))
+        cooling_load_kw = self.compute_cooling_demand(effective_load)
         wue = self.compute_wue_factor()
         f_factor = psychrometric_factor(self.ambient_temp, self.humidity)
-        # thermal_load_kw treated as IT_Equipment_Energy_kWh for a 1-hour window
-        water_l_per_hr = wue * thermal_load_kw * f_factor
+        
+        raw_water_l_hr = wue * effective_load * f_factor
+        
+        # Apply cooling strategy reduction
+        saving_pct = self.STRATEGY_DISCOUNTS.get(self.cooling_strategy, 0.15) * 100.0
+        optimized_water_l_hr = raw_water_l_hr * (1.0 - (saving_pct / 100.0))
+        
+        # Estimated cost per 1000 Liters + electricity cost ($0.005/L water + $0.12/kWh cooling)
+        cooling_cost = (optimized_water_l_hr * 0.005) + (cooling_load_kw * 0.12)
+        
         return {
             "cooling_load_kw": round(cooling_load_kw, 4),
             "wue_factor": wue,
-            "water_l_per_hr": round(water_l_per_hr, 4),
+            "water_l_per_hr": round(optimized_water_l_hr, 4),
+            "baseline_water_l_per_hr": round(raw_water_l_hr, 4),
+            "water_saving_pct": round(saving_pct, 2),
+            "cooling_cost_usd": round(cooling_cost, 2),
             "pue": self.compute_pue(),
+            "ambient_temp": self.ambient_temp,
+            "humidity": self.humidity,
         }
+

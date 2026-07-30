@@ -63,4 +63,21 @@ export const downloadDailyReport = (format = "csv") =>
     .get("/api/v1/reports/daily", { params: { format }, responseType: "blob" })
     .then((r) => r.data);
 
+/** Enterprise APIs */
+export const getEnterpriseDashboard = () =>
+  api.get("/api/dashboard").then((r) => r.data);
+
+export const postReason = (telemetry_id) =>
+  api.post("/api/reason", { telemetry_id }).then((r) => r.data);
+
+export const postMemorySearch = (query, k = 5, memory_type = null) =>
+  api.post("/api/memory/search", { query, k, memory_type }).then((r) => r.data);
+
+export const getIncidents = (severity = null, limit = 20) =>
+  api.get("/api/incidents", { params: { severity, limit } }).then((r) => r.data);
+
+export const getRecommendations = (limit = 20) =>
+  api.get("/api/recommendations", { params: { limit } }).then((r) => r.data);
+
 export default api;
+

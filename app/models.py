@@ -44,12 +44,28 @@ class Telemetry(Base):
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
     cpu_pct = Column(Float, nullable=False)
     gpu_pct = Column(Float, nullable=True)
+    gpu_temp = Column(Float, nullable=True)
     ram_pct = Column(Float, nullable=False)
     disk_io = Column(Float, nullable=True)
     fan_rpm = Column(Integer, nullable=True)
     battery_pct = Column(Float, nullable=True)
+    weather_temp = Column(Float, nullable=True)
+    humidity = Column(Float, nullable=True)
+    predicted_water_usage = Column(Float, nullable=True)
     source = Column(String, default="laptop")
     site_id = Column(String, nullable=True, index=True)  # Phase 2: fleet/site grouping (additive column)
+
+    @property
+    def cpu_usage(self) -> float:
+        return self.cpu_pct
+
+    @property
+    def gpu_usage(self) -> float:
+        return self.gpu_pct or 0.0
+
+    @property
+    def ram_usage(self) -> float:
+        return self.ram_pct
 
 
 class Weather(Base):
@@ -79,9 +95,10 @@ class WaterModelResult(Base):
 class Incident(Base):
     __tablename__ = "incidents"
     incident_id = Column(String, primary_key=True, default=_uuid)
-    telemetry_id = Column(String, ForeignKey("telemetry.telemetry_id"), nullable=False)
+    telemetry_id = Column(String, ForeignKey("telemetry.telemetry_id"), nullable=True)
     severity = Column(String, nullable=False)
     description = Column(String, nullable=False)
+    root_cause = Column(String, nullable=True)
     resolved = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -124,19 +141,6 @@ class Memory(Base):
 
 
 class Embedding(Base):
-    """
-    SDD Tech Stack: "CockroachDB Vector Index".
-
-    `vector` is a plain SQLAlchemy JSON column so the ORM model works
-    identically on SQLite and CockroachDB. On CockroachDB, a native
-    `VECTOR(n)` column (`vector_native`) is ADDITIONALLY created on this
-    table via raw DDL (see app.memory_engine.vector_index), kept in sync
-    on every write, so similarity search can run as real SQL using
-    CockroachDB's `<=>` cosine-distance operator directly in the
-    database instead of pulling every row into Python. JSON remains the
-    portable source of truth; `vector_native` is a CockroachDB-only
-    derived index column.
-    """
     __tablename__ = "embeddings"
     embedding_id = Column(String, primary_key=True, default=_uuid)
     memory_id = Column(String, ForeignKey("memories.memory_id"), nullable=False)
@@ -145,14 +149,31 @@ class Embedding(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class MemoryEmbedding(Base):
+    """
+    Enterprise Agentic Memory Embedding Table.
+    Stores semantic vector representation for any incident, recommendation, or operational summary.
+    """
+    __tablename__ = "memory_embeddings"
+    id = Column(String, primary_key=True, default=_uuid)
+    memory_type = Column(String, nullable=False, index=True)  # incident | recommendation | summary | telemetry
+    source_id = Column(String, nullable=False, index=True)
+    embedding = Column(JSON, nullable=False)
+    summary = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Recommendation(Base):
     __tablename__ = "recommendations"
     recommendation_id = Column(String, primary_key=True, default=_uuid)
-    telemetry_id = Column(String, ForeignKey("telemetry.telemetry_id"), nullable=False)
+    telemetry_id = Column(String, ForeignKey("telemetry.telemetry_id"), nullable=True)
+    incident_id = Column(String, ForeignKey("incidents.incident_id"), nullable=True)
     memory_id = Column(String, ForeignKey("memories.memory_id"), nullable=True)
     text = Column(String, nullable=False)
+    expected_water_saving = Column(Float, nullable=True, default=0.0)
     confidence = Column(Float, nullable=False)
-    agent_name = Column(String, nullable=False)  # 'rules_fallback' | 'bedrock_single'
+    agent_name = Column(String, nullable=False)  # 'rules_fallback' | 'bedrock_single' | 'multi_agent_orchestrator'
     cited_memory_ids = Column(JSON, default=list)
     rationale = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+

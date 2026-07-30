@@ -95,3 +95,61 @@ def search_memories(db: Session, query_text: str, k: int = 5) -> List[dict]:
         }
         for sim, m in top
     ]
+
+
+def store_memory_embedding(
+    db: Session,
+    memory_type: str,
+    source_id: str,
+    summary: str,
+) -> models.MemoryEmbedding:
+    """Store an enterprise vector embedding in memory_embeddings table."""
+    vector, _ = embed_text(summary)
+    mem_emb = models.MemoryEmbedding(
+        memory_type=memory_type,
+        source_id=source_id,
+        embedding=vector,
+        summary=summary,
+    )
+    db.add(mem_emb)
+    db.commit()
+    db.refresh(mem_emb)
+    vector_index.sync_native_vector(db, mem_emb.id, vector, table_name="memory_embeddings", id_column="id")
+    return mem_emb
+
+
+def search_memory_embeddings(
+    db: Session,
+    query_text: str,
+    memory_type: str = None,
+    k: int = 5,
+) -> List[dict]:
+    """Search memory_embeddings table semantically using CockroachDB vector index or fallback cosine similarity."""
+    query_vec, _ = embed_text(query_text)
+    native_res = vector_index.native_search_memory_embeddings(db, query_vec, memory_type=memory_type, k=k)
+    if native_res is not None:
+        return native_res
+
+    # Python fallback scan
+    q = db.query(models.MemoryEmbedding)
+    if memory_type:
+        q = q.filter(models.MemoryEmbedding.memory_type == memory_type)
+    rows = q.all()
+    scored = []
+    for r in rows:
+        sim = cosine_similarity(query_vec, r.embedding)
+        scored.append((sim, r))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    top = scored[:k]
+    return [
+        {
+            "id": r.id,
+            "memory_type": r.memory_type,
+            "source_id": r.source_id,
+            "summary": r.summary,
+            "created_at": r.created_at,
+            "similarity": round(sim, 4),
+        }
+        for sim, r in top
+    ]
+

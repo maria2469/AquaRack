@@ -41,3 +41,12 @@ def run_migrations() -> None:
     Base.metadata.create_all(bind=engine)
     _add_column_if_missing("racks", "site_id", "VARCHAR")
     _add_column_if_missing("telemetry", "site_id", "VARCHAR")
+    _add_column_if_missing("telemetry", "gpu_temp", "FLOAT")
+    _add_column_if_missing("telemetry", "weather_temp", "FLOAT")
+    _add_column_if_missing("telemetry", "humidity", "FLOAT")
+    _add_column_if_missing("telemetry", "predicted_water_usage", "FLOAT")
+    _add_column_if_missing("incidents", "root_cause", "VARCHAR")
+    _add_column_if_missing("incidents", "telemetry_id", "VARCHAR")
+    _add_column_if_missing("recommendations", "incident_id", "VARCHAR")
+    _add_column_if_missing("recommendations", "expected_water_saving", "FLOAT")
+
