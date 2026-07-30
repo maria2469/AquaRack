@@ -1,5 +1,5 @@
 """
-Central configuration for AquaMind AI (SDD Section 19 — deployment;
+Central configuration for AquaRack (SDD Section 19 — deployment;
 Section 17.1 — security defaults).
 
 All values are overridable via environment variables / a local .env file
@@ -23,9 +23,9 @@ class Settings(BaseSettings):
     # --insecure` or the docker-compose `cockroachdb` service). Point
     # DATABASE_URL at CockroachDB Cloud / a secured cluster in production.
     # SQLite remains available as an explicit opt-out for offline dev
-    # (set DATABASE_URL=sqlite:///./aquamind_phase1.db) but is no longer the
+    # (set DATABASE_URL=sqlite:///./aquarack_local.db) but is no longer the
     # default, since the SDD tech stack calls for CockroachDB.
-    DATABASE_URL: str = "cockroachdb://root@localhost:26257/aquamind?sslmode=disable"
+    DATABASE_URL: str = "cockroachdb://root@localhost:26257/aquarack?sslmode=disable"
 
     # --- Rack / Digital Twin defaults (Section 12.2) ---
     RACK_CAPACITY_KW: float = 5.0
@@ -45,11 +45,14 @@ class Settings(BaseSettings):
     # BEDROCK_ENABLED=false explicitly to skip Bedrock entirely (e.g. CI).
     BEDROCK_ENABLED: bool = True
     AWS_REGION: str = "us-east-1"
-    BEDROCK_EMBED_MODEL_ID: str = "amazon.titan-embed-text-v2:0"
-    BEDROCK_TEXT_MODEL_ID: str = "anthropic.claude-3-haiku-20240307-v1:0"
+    BEDROCK_EMBED_MODEL_ID: str = "us.amazon.titan-embed-text-v2:0"
+    # Claude Sonnet 5 — near-instant agentic responses, 1M context, tool use.
+    # Newer Bedrock models require Inference Profile IDs (us. prefix).
+    # Switch to "us.anthropic.claude-opus-5" for maximum reasoning depth.
+    BEDROCK_TEXT_MODEL_ID: str = "us.anthropic.claude-sonnet-5"
 
     # --- Collector (Section 14) ---
-    DEVICE_ID: str = os.environ.get("AQUAMIND_DEVICE_ID", "laptop-local-01")
+    DEVICE_ID: str = os.environ.get("AQUARACK_DEVICE_ID", "rack-01-primary")
     POLL_INTERVAL_SECONDS: int = 5
     LOCAL_QUEUE_DB: str = "./collector_queue.db"
 

@@ -1,21 +1,20 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
-  Cpu, Thermometer, Droplets, Gauge, BrainCircuit, Search,
+  Cpu, Thermometer, Droplets, Gauge, BrainCircuit,
   Download, RefreshCw, Wifi, WifiOff, AlertCircle, Fan, BatteryMedium,
-  Zap, Database, ShieldCheck, Server
+  Zap, Database, ShieldCheck, Server, Bot, FileText
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line
 } from "recharts";
 import { useLiveTelemetry } from "../hooks/useLiveTelemetry";
-import {
-  searchMemory, downloadDailyReport, postRecommend, getEnterpriseDashboard,
-  postReason, postMemorySearch
-} from "../lib/api";
+import { downloadDailyReport, getEnterpriseDashboard, postReason } from "../lib/api";
 import StatCard from "../components/ui/StatCard";
 import AmbientVeil from "../components/ui/AmbientVeil";
 import AgentExplanationPanel from "../components/AgentExplanationPanel";
+import AgentReasoningConsole from "../components/AgentReasoningConsole";
+import MCPMemoryChatbot from "../components/MCPMemoryChatbot";
 
 function ConnectionBadge({ status }) {
   const map = {
@@ -36,15 +35,12 @@ function ConnectionBadge({ status }) {
 
 export default function Dashboard() {
   const { data, status, refresh } = useLiveTelemetry({ intervalMs: 5000 });
-  const [query, setQuery] = useState("");
-  const [memories, setMemories] = useState(null);
-  const [searching, setSearching] = useState(false);
   const [reasonLoading, setReasonLoading] = useState(false);
   const [reasoningData, setReasoningData] = useState(null);
   const [dashData, setDashData] = useState(null);
+  const [isChatbotOpen, setIsChatbotOpen] = useState(false);
 
   const telemetry = data?.latest_telemetry;
-  const water = data?.latest_water_model;
 
   const fetchDashboardData = async () => {
     try {
@@ -70,24 +66,6 @@ export default function Dashboard() {
       console.error("Reasoning call failed", err);
     } finally {
       setReasonLoading(false);
-    }
-  };
-
-  const handleSearch = async (e) => {
-    e.preventDefault();
-    if (!query.trim()) return;
-    setSearching(true);
-    try {
-      const res = await postMemorySearch(query, 5);
-      const combined = [
-        ...(res.similar_incidents || []).map(i => ({ memory_id: i.incident_id, type: "incident", summary_text: `${i.description} (Root cause: ${i.root_cause})`, similarity: i.similarity })),
-        ...(res.previous_recommendations || []).map(r => ({ memory_id: r.recommendation_id, type: "recommendation", summary_text: `${r.recommendation_text} (Water Saving: ${r.expected_water_saving}%)`, similarity: r.similarity })),
-      ];
-      setMemories(combined);
-    } catch {
-      setMemories([]);
-    } finally {
-      setSearching(false);
     }
   };
 
@@ -121,15 +99,30 @@ export default function Dashboard() {
     { timestamp: "19:20", predicted_water: 1.7, saved_water: 0.32 },
   ];
 
+  const defaultExplanation = {
+    recommendation: dashData?.latest_recommendation?.text || "Deploy Hybrid Evaporative Liquid Cooling across GPU Cluster (Rack 1-100)",
+    explanation: "CockroachDB Managed MCP retrieved 24 similar historical incidents matching 39°C ambient temperature spikes.",
+    root_cause: "Parallel matrix multiplication training workload combined with high humidity ambient air.",
+    expected_water_saving: dashData?.latest_recommendation?.expected_water_saving || 17.8,
+    confidence_pct: dashData?.memory_confidence_pct || 93,
+    matched_memories_count: dashData?.historical_matches_count || 24,
+    historical_evidence: [
+      { memory_id: "Incident #182", summary: "High GPU temperature at 38°C ambient - Hybrid Cooling applied" },
+      { memory_id: "Incident #201", summary: "Peak load water surge - Evaporative strategy reduced 18% water" },
+      { memory_id: "Incident #233", summary: "Multi-rack scaling thermal cluster - Liquid cooling baseline matched" },
+    ],
+    thermodynamic_metrics: { ambient_temp: dashData?.weather_temp || 39, humidity: dashData?.humidity || 62 }
+  };
+
   return (
     <div className="relative bg-abyss min-h-screen">
-      <section className="relative pt-28 pb-10 border-b border-rack overflow-hidden">
+      <section className="relative pt-28 pb-8 border-b border-rack overflow-hidden">
         <AmbientVeil />
         <div className="relative max-w-7xl mx-auto px-5 md:px-8">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
               <span className="text-xs uppercase tracking-[0.18em] text-flow font-mono">Agentic Digital Twin</span>
-              <h1 className="font-heading text-3xl md:text-4xl font-semibold text-frost mt-2">
+              <h1 className="font-heading text-3xl md:text-4xl font-semibold text-frost mt-1.5">
                 AquaRack Enterprise Dashboard
               </h1>
               <p className="text-sm text-mist mt-1">CockroachDB Managed MCP Server + Amazon Bedrock Agentic Memory</p>
@@ -139,7 +132,7 @@ export default function Dashboard() {
               <button
                 onClick={handleReason}
                 disabled={reasonLoading}
-                className="inline-flex items-center gap-2 rounded-lg bg-coolant/90 hover:bg-coolant disabled:opacity-60 px-4 py-2 text-xs font-semibold text-abyss transition-colors"
+                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-coolant via-flow to-signal hover:brightness-110 disabled:opacity-60 px-4 py-2 text-xs font-semibold text-abyss transition-all shadow-lg"
               >
                 {reasonLoading ? <RefreshCw size={13} className="animate-spin" /> : <BrainCircuit size={13} />}
                 Run Bedrock Reasoning Loop
@@ -149,7 +142,7 @@ export default function Dashboard() {
         </div>
       </section>
 
-      <section className="max-w-7xl mx-auto px-5 md:px-8 py-10 space-y-8">
+      <section className="max-w-7xl mx-auto px-5 md:px-8 py-8 space-y-8">
         {/* KPI CARDS GRID */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard icon={Zap} label="Current GPU Usage" value={telemetry?.gpu_pct ?? dashData?.current_gpu ?? 91} unit="%" accent="coolant" />
@@ -162,21 +155,18 @@ export default function Dashboard() {
           <StatCard icon={Server} label="OpenDC Fleet (Racks 1-100)" value={dashData?.opendc_fleet?.rack_count ?? 100} unit="Active Racks" accent="amber" />
         </div>
 
-        {/* AGENT EXPLANATION PANEL */}
-        <AgentExplanationPanel reasoningData={reasoningData || {
-          recommendation: dashData?.latest_recommendation?.text || "Deploy Hybrid Evaporative Liquid Cooling across GPU Cluster (Rack 1-100)",
-          explanation: "CockroachDB Managed MCP retrieved 24 similar historical incidents matching 39°C ambient temperature spikes.",
-          root_cause: "Parallel matrix multiplication training workload combined with high humidity ambient air.",
-          expected_water_saving: dashData?.latest_recommendation?.expected_water_saving || 17.8,
-          confidence_pct: dashData?.memory_confidence_pct || 93,
-          matched_memories_count: dashData?.historical_matches_count || 24,
-          historical_evidence: [
-            { memory_id: "Incident #182", summary: "High GPU temperature at 38°C ambient - Hybrid Cooling applied" },
-            { memory_id: "Incident #201", summary: "Peak load water surge - Evaporative strategy reduced 18% water" },
-            { memory_id: "Incident #233", summary: "Multi-rack scaling thermal cluster - Liquid cooling baseline matched" },
-          ],
-          thermodynamic_metrics: { ambient_temp: dashData?.weather_temp || 39, humidity: dashData?.humidity || 62 }
-        }} />
+        {/* SIDE-BY-SIDE REASONING LOOP CONTROL & LIVE CONSOLE LOGS */}
+        <div className="grid lg:grid-cols-2 gap-6 items-stretch">
+          {/* LEFT: AGENT REASONING EXPLANATION & TRIGGER */}
+          <AgentExplanationPanel
+            reasoningData={reasoningData || defaultExplanation}
+            onRunReasoning={handleReason}
+            isReasoning={reasonLoading}
+          />
+
+          {/* RIGHT: AGENT REASONING CONSOLE (LIVE SSE LOG STREAM) */}
+          <AgentReasoningConsole />
+        </div>
 
         {/* CHARTS ROW */}
         <div className="grid lg:grid-cols-2 gap-6">
@@ -227,71 +217,36 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* MEMORY SEARCH & REPORTS ROW */}
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* COCKROACHDB VECTOR INDEX MEMORY SEARCH */}
-          <div className="lg:col-span-2 card-glass rounded-2xl p-6">
-            <h2 className="font-heading font-semibold text-frost mb-4">CockroachDB Managed MCP Memory Search</h2>
-            <form onSubmit={handleSearch} className="flex gap-2 mb-4">
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="e.g. high GPU thermal spike at 39°C"
-                className="flex-1 rounded-lg bg-hall-2 border border-rack-2 focus:border-coolant px-4 py-2.5 text-sm text-fog placeholder:text-mist outline-none transition-colors"
-              />
-              <button
-                type="submit"
-                disabled={searching}
-                className="inline-flex items-center gap-2 rounded-lg border border-rack-2 bg-hall-3 px-4 py-2.5 text-sm font-medium text-fog hover:border-coolant transition-colors"
-              >
-                <Search size={15} /> Search MCP Memory
-              </button>
-            </form>
-            <div className="space-y-2 max-h-72 overflow-y-auto">
-              {memories === null && (
-                <p className="text-sm text-mist">Execute vector searches over CockroachDB distributed vector index.</p>
-              )}
-              {memories?.length === 0 && (
-                <p className="text-sm text-mist">No matching memories found.</p>
-              )}
-              {memories?.map((m, idx) => (
-                <div key={idx} className="rounded-lg bg-hall-2 border border-rack p-3.5">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-mono text-flow uppercase">{m.type}</span>
-                    <span className="text-xs font-mono text-signal">
-                      {Math.round((m.similarity ?? 0.9) * 100)}% Match
-                    </span>
-                  </div>
-                  <p className="text-sm text-fog">{m.summary_text}</p>
-                </div>
-              ))}
+        {/* REPORTS ROW */}
+        <div className="card-glass rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="max-w-2xl">
+            <div className="flex items-center gap-2 mb-1">
+              <FileText size={18} className="text-coolant" />
+              <h2 className="font-heading font-semibold text-frost text-lg">Export Operational Report</h2>
             </div>
-          </div>
-
-          {/* REPORTS */}
-          <div className="card-glass rounded-2xl p-6">
-            <h2 className="font-heading font-semibold text-frost mb-4">Export Operational Report</h2>
-            <p className="text-sm text-mist leading-relaxed mb-5">
-              Export telemetry logs, thermodynamic water calculations, and Amazon Bedrock agent recommendations.
+            <p className="text-sm text-mist leading-relaxed">
+              Export telemetry logs, thermodynamic water calculations, and Amazon Bedrock agent recommendations as downloadable reports.
             </p>
-            <div className="flex flex-col gap-2.5">
-              <button
-                onClick={() => handleDownload("csv")}
-                className="inline-flex items-center justify-center gap-2 rounded-lg border border-rack-2 bg-hall-2 hover:border-coolant px-4 py-2.5 text-sm font-medium text-fog transition-colors"
-              >
-                <Download size={14} /> Download CSV Report
-              </button>
-              <button
-                onClick={() => handleDownload("pdf")}
-                className="inline-flex items-center justify-center gap-2 rounded-lg border border-rack-2 bg-hall-2 hover:border-coolant px-4 py-2.5 text-sm font-medium text-fog transition-colors"
-              >
-                <Download size={14} /> Download PDF Report
-              </button>
-            </div>
+          </div>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <button
+              onClick={() => handleDownload("csv")}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-rack-2 bg-hall-2 hover:border-coolant px-4 py-2.5 text-sm font-medium text-fog transition-colors"
+            >
+              <Download size={14} /> Download CSV Report
+            </button>
+            <button
+              onClick={() => handleDownload("pdf")}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-rack-2 bg-hall-2 hover:border-coolant px-4 py-2.5 text-sm font-medium text-fog transition-colors"
+            >
+              <Download size={14} /> Download PDF Report
+            </button>
           </div>
         </div>
       </section>
+
+      {/* INTERACTIVE COCKROACHDB MCP MEMORY CHATBOT OVERLAY (LAUNCHED VIA FLOATING ACTION ICON) */}
+      <MCPMemoryChatbot isOpen={isChatbotOpen} setIsOpen={setIsChatbotOpen} />
     </div>
   );
 }
-

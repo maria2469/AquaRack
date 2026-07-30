@@ -13,6 +13,13 @@ export default defineConfig({
       '/api': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
+        // Prevent buffering of SSE streams (Agent Reasoning Console)
+        configure: (proxy) => {
+          proxy.on('proxyRes', (proxyRes) => {
+            proxyRes.headers['Cache-Control'] = 'no-cache';
+            proxyRes.headers['Connection'] = 'keep-alive';
+          });
+        },
       },
     },
   },

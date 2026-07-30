@@ -65,8 +65,8 @@ def test_opendc_simulation_job_lifecycle():
     job_id = resp.json()["job_id"]
     assert resp.json()["status"] in ("queued", "running")
 
-    # Poll until the background thread finishes (small job -> fast).
-    deadline = time.time() + 15
+    # Poll until the background thread finishes (small job → fast, allow 30s for CI).
+    deadline = time.time() + 30
     status = None
     while time.time() < deadline:
         resp = client.get(f"/api/v1/simulate/opendc/{job_id}")

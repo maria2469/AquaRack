@@ -3,7 +3,7 @@ import axios from "axios";
 /**
  * AquaMind AI API client.
  *
- * Talks to the Phase 1 FastAPI monolith (SDD Section 10 — /api/v1/*).
+ * Talks to the Phase 1 FastAPI monolith (SDD Section 10 — /api/v1/*)
  * Same shared schemas/data contracts carry into Phase 2's distributed
  * services (SDD Phase 2, Section on gateway routing), so this client
  * does not need to change when the backend topology changes — only
@@ -11,6 +11,12 @@ import axios from "axios";
  *
  * Dev: vite.config.js proxies /api -> http://127.0.0.1:8000
  * Prod: set VITE_API_BASE_URL to the deployed API origin (see .env.example)
+ *
+ * Two axios instances:
+ *   api        — 10 s timeout for fast polling endpoints (telemetry, dashboard, etc.)
+ *   reasonApi  — 60 s timeout for /api/reason which runs the full multi-agent
+ *                pipeline (MCP retrieval + Bedrock + fallback). The pipeline
+ *                completes in ~6-15 s even when Bedrock falls back to rules.
  */
 const baseURL = import.meta.env.VITE_API_BASE_URL || "";
 
@@ -19,10 +25,19 @@ export const api = axios.create({
   timeout: 10000,
 });
 
+// Dedicated instance for slow agentic endpoints — avoids the 10 s global cap
+// triggering on the multi-agent reasoning pipeline (SDD FR-1.11 fallback adds
+// latency even when Bedrock is unreachable).
+export const reasonApi = axios.create({
+  baseURL,
+  timeout: 60000,
+});
+
 // Optional local bearer token support (SDD Section 17.1 — Phase 1 auth)
 const token = import.meta.env.VITE_API_TOKEN;
 if (token) {
   api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+  reasonApi.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 }
 
 /** GET /api/v1/dashboard/summary -> DashboardSummary */
@@ -67,8 +82,14 @@ export const downloadDailyReport = (format = "csv") =>
 export const getEnterpriseDashboard = () =>
   api.get("/api/dashboard").then((r) => r.data);
 
+/**
+ * POST /api/reason — runs the full multi-agent pipeline.
+ * Uses reasonApi (60 s) because the pipeline involves:
+ *   MCP memory retrieval → Bedrock Converse → rules fallback → DB writes
+ * which can take 6–15 s even on a warm path.
+ */
 export const postReason = (telemetry_id) =>
-  api.post("/api/reason", { telemetry_id }).then((r) => r.data);
+  reasonApi.post("/api/reason", { telemetry_id }).then((r) => r.data);
 
 export const postMemorySearch = (query, k = 5, memory_type = null) =>
   api.post("/api/memory/search", { query, k, memory_type }).then((r) => r.data);

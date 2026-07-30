@@ -3,12 +3,13 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, schemas
+from app.db_retry import crdb_retry
 
 router = APIRouter(prefix="/api/v1", tags=["dashboard"])
 
 
-@router.get("/dashboard/summary", response_model=schemas.DashboardSummary)
-def dashboard_summary(db: Session = Depends(get_db)):
+def _fetch_dashboard(db: Session) -> schemas.DashboardSummary:
+    """All DB reads for the dashboard — wrapped in CRDB retry logic."""
     latest_telemetry = (
         db.query(models.Telemetry).order_by(models.Telemetry.timestamp.desc()).first()
     )
@@ -33,3 +34,8 @@ def dashboard_summary(db: Session = Depends(get_db)):
         telemetry_history=history,
         open_incidents=open_incidents,
     )
+
+
+@router.get("/dashboard/summary", response_model=schemas.DashboardSummary)
+def dashboard_summary(db: Session = Depends(get_db)):
+    return crdb_retry(_fetch_dashboard, db)

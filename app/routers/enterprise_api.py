@@ -1,5 +1,5 @@
 """
-Enterprise FastAPI Endpoints for AquaMind AI.
+Enterprise FastAPI Endpoints for AquaRack.
 
 Provides production-ready APIs:
   GET  /api/telemetry/latest
@@ -24,8 +24,9 @@ from app.agents.orchestrator import orchestrator
 from app.routers.simulate import run_full_pipeline
 from app.water_model.thermo import WaterModel
 from app.digital_twin.opendc_adapter import simulate_scaled_racks
+from app.db_retry import crdb_retry
 
-logger = logging.getLogger("aquamind.enterprise_api")
+logger = logging.getLogger("aquarack.enterprise_api")
 
 router = APIRouter(prefix="/api", tags=["enterprise"])
 
@@ -37,7 +38,7 @@ def get_latest_telemetry(db: Session = Depends(get_db)):
     if not row:
         # Generate initial telemetry if none exists
         row = models.Telemetry(
-            device_id="laptop-local-01",
+            device_id="rack-01-primary",
             cpu_pct=42.5,
             gpu_pct=68.0,
             gpu_temp=58.5,
@@ -267,10 +268,8 @@ def get_memory_history(
     ]
 
 
-@router.get("/dashboard")
-def get_dashboard_summary(db: Session = Depends(get_db)):
-    """GET /api/dashboard - Aggregated enterprise metrics for React dashboard."""
-    telemetry = get_latest_telemetry(db)
+def _fetch_enterprise_dashboard(db: Session) -> dict:
+    """All DB reads for /api/dashboard — isolated for CRDB retry."""
     t_row = db.query(models.Telemetry).order_by(models.Telemetry.timestamp.desc()).first()
 
     # OpenDC scaling Racks 2-100
@@ -284,6 +283,30 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
     recent_telemetry = db.query(models.Telemetry).order_by(models.Telemetry.timestamp.desc()).limit(15).all()
     chart_gpu = [{"timestamp": t.timestamp.strftime("%H:%M:%S"), "gpu_usage": t.gpu_pct or 0.0, "cpu_usage": t.cpu_pct} for t in reversed(recent_telemetry)]
     chart_water = [{"timestamp": t.timestamp.strftime("%H:%M:%S"), "predicted_water": t.predicted_water_usage or 1.4, "saved_water": (t.predicted_water_usage or 1.4) * 0.18} for t in reversed(recent_telemetry)]
+
+    return {
+        "t_row": t_row,
+        "opendc_fleet": opendc_fleet,
+        "incidents_count": incidents_count,
+        "recommendations_count": recommendations_count,
+        "latest_rec": latest_rec,
+        "chart_gpu": chart_gpu,
+        "chart_water": chart_water,
+    }
+
+
+@router.get("/dashboard")
+def get_dashboard_summary(db: Session = Depends(get_db)):
+    """GET /api/dashboard - Aggregated enterprise metrics for React dashboard."""
+    # Fetch live telemetry (also retried inside get_latest_telemetry via crdb_retry)
+    telemetry = crdb_retry(lambda db: get_latest_telemetry(db), db)
+
+    # Fetch all remaining dashboard data with automatic CRDB retry
+    data = crdb_retry(_fetch_enterprise_dashboard, db)
+
+    latest_rec = data["latest_rec"]
+    recommendations_count = data["recommendations_count"]
+    incidents_count = data["incidents_count"]
 
     return {
         "current_gpu": telemetry["gpu_usage"],
@@ -300,9 +323,9 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
             "expected_water_saving": latest_rec.expected_water_saving if latest_rec else 17.8,
             "confidence": latest_rec.confidence if latest_rec else 0.93,
         },
-        "opendc_fleet": opendc_fleet,
+        "opendc_fleet": data["opendc_fleet"],
         "charts": {
-            "gpu_usage": chart_gpu,
-            "water_consumption": chart_water,
+            "gpu_usage": data["chart_gpu"],
+            "water_consumption": data["chart_water"],
         },
     }

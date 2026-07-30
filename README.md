@@ -19,8 +19,8 @@
 - 🧠 **CockroachDB Distributed Vector Indexing**: Stores Titan 384-dimensional embeddings in CockroachDB and executes in-database similarity search via native `<=>` cosine-distance operators. Implemented in `app/memory_engine/vector_index.py`.
 
 ### 2. AWS Services Used (Min. 1 Required — Used 2)
-- 🤖 **Amazon Bedrock Reasoning (`anthropic.claude-3-haiku`)**: Powers the LangChain `ChatBedrockConverse` structured output reasoning chain (`RecommendationOutput`), outputting actionable cooling decisions with confidence scores and cited memory IDs.
-- 📐 **Amazon Bedrock Titan Embeddings (`amazon.titan-embed-text-v2:0`)**: Generates real-time vector embeddings for telemetry events and memory retrieval.
+- 🤖 **Amazon Bedrock Reasoning (`us.anthropic.claude-sonnet-5`)**: Powers the LangChain `ChatBedrockConverse` structured output reasoning chain (`RecommendationOutput`), outputting actionable cooling decisions with confidence scores and cited memory IDs. Near-instant responses, 1M context window, and native agentic tool use. Configurable to `us.anthropic.claude-opus-5` via `BEDROCK_TEXT_MODEL_ID` for maximum reasoning depth.
+- 📐 **Amazon Bedrock Titan Embeddings (`us.amazon.titan-embed-text-v2:0`)**: Generates real-time vector embeddings for telemetry events and memory retrieval.
 
 ### 3. Open Source & License Compliance
 - 📄 **License**: Open Source under the **MIT License** (see [LICENSE](file:///d:/Projects/RackPulse/LICENSE)).

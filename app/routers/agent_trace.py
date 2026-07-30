@@ -40,9 +40,14 @@ async def stream(run_id: str | None = None):
     async def event_generator():
         queue = await rl.subscribe()
         try:
-            # Replay recent history first so a client connecting mid-run
-            # still sees the lead-up, then switch to live tail.
-            for evt in rl.get_recent_events(run_id=run_id, limit=50):
+            # Replay history for the current/latest run only so a client connecting
+            # mid-run sees the lead-up without dumping old historical runs.
+            recent_events = rl.get_recent_events(run_id=run_id, limit=50)
+            if not run_id and recent_events:
+                latest_run_id = recent_events[-1].get("run_id")
+                recent_events = [e for e in recent_events if e.get("run_id") == latest_run_id]
+
+            for evt in recent_events:
                 yield {"event": "reasoning", "data": json.dumps(evt, default=str)}
 
             while True:
