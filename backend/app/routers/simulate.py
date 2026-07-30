@@ -6,6 +6,7 @@ from app import models, schemas
 from app.config import settings
 from app.digital_twin.laptop_mode import DigitalTwinEngine, RackProfile
 from app.water_model.thermo import WaterModel
+from app.services.weather_services import get_current_weather
 
 router = APIRouter(prefix="/api/v1", tags=["simulate"])
 
@@ -32,9 +33,16 @@ def run_full_pipeline(db: Session, telemetry_id: str = None) -> dict:
     twin = DigitalTwinEngine(profile, mode="laptop")
     twin_state = twin.simulate(reading)
 
-    weather = db.query(models.Weather).order_by(models.Weather.timestamp.desc()).first()
-    ambient_temp = weather.ambient_temp if weather else settings.DEFAULT_AMBIENT_TEMP_C
-    humidity = weather.humidity if weather else settings.DEFAULT_HUMIDITY_PCT
+    # Prefer the actual weather already attached to this telemetry reading
+    # (set at collection time); otherwise fetch current weather live. Only
+    # settings.DEFAULT_* is used if the weather service itself falls back.
+    if reading.weather_temp is not None and reading.humidity is not None:
+        ambient_temp = reading.weather_temp
+        humidity = reading.humidity
+    else:
+        weather = get_current_weather(db)
+        ambient_temp = weather["temperature"]
+        humidity = weather["humidity"]
 
     water_model = WaterModel(
         ambient_temp=ambient_temp,

@@ -10,9 +10,18 @@ Route precedence: the multi-agent router (agents_router) is included
 before the legacy single-agent recommend router, so POST /api/v1/recommend
 is served by the multi-agent Orchestrator. health (with dependency
 checks) takes precedence over the plain health handler for the same reason.
+
+The telemetry collector daemon (app.collector.run_collector) runs as a
+background thread inside this same process, started on startup — so a
+single `uvicorn app.main:app` command is enough to get real, continuously
+updating telemetry + weather data. No separate `python -m
+app.collector.run_collector` process is needed. The thread is a daemon
+thread, so it's killed automatically when the main process exits; no
+manual shutdown/cleanup is required.
 """
 import logging
 import os
+import threading
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -40,6 +49,7 @@ from app.routers import (
     enterprise_api,
 )
 from app.mcp import server as mcp_server
+from app.collector.run_collector import run as run_collector
 
 logging.basicConfig(
     level=logging.INFO,
@@ -101,6 +111,12 @@ async def rfc7807_handler(request: Request, exc: StarletteHTTPException):
     )
 
 
+# Module-level handle to the collector thread. Kept as a reference mainly
+# for introspection/debugging (e.g. checking .is_alive() from a shell);
+# not required for shutdown since the thread is a daemon thread.
+_collector_thread: threading.Thread | None = None
+
+
 @app.on_event("startup")
 def on_startup():
     init_db()
@@ -110,6 +126,19 @@ def on_startup():
         "AquaRack started. DB=%s (CockroachDB=%s) Ollama enabled=%s (model=%s)",
         settings.DATABASE_URL, IS_COCKROACHDB, settings.OLLAMA_ENABLED, settings.OLLAMA_MODEL,
     )
+
+    # Start the telemetry collector daemon in-process as a background
+    # thread, so a single uvicorn process produces real, continuously
+    # updating telemetry + weather data without a second terminal/process.
+    # daemon=True means this thread never blocks process exit.
+    global _collector_thread
+    _collector_thread = threading.Thread(
+        target=run_collector,
+        name="telemetry-collector",
+        daemon=True,
+    )
+    _collector_thread.start()
+    logger.info("Telemetry collector started as background thread (in-process, no separate daemon needed).")
 
 
 # Enterprise and MCP routers

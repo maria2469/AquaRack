@@ -1,21 +1,14 @@
 """
 OpenDC / CloudSim adapter (SDD Phase 2, Section 13/15).
 
-This is the "new" piece Phase 2 adds behind the existing DigitalTwinEngine
-interface (Section 15.2: "only the Digital Twin Engine's adapter layer is
-new"). It maps simulated data-centre workloads onto the *exact same*
-TelemetryReading / TwinState schema the laptop collector produces, so the
-Water Model, Memory Engine, and AI Decision Agent all consume it with zero
-changes.
-
-There is no real OpenDC/CloudSim binary bundled here (that's a large Java/
-Kotlin simulation framework) — this adapter is a lightweight, dependency-
-free stand-in that generates plausible per-tick, per-rack utilisation
-curves for a handful of workload archetypes, which is enough to exercise
-the full downstream pipeline end-to-end exactly like the SDD describes.
-Swapping in real OpenDC/CloudSim output later is a matter of replacing
-`WORKLOAD_PROFILES`/`_run_job` internals — the adapter's public contract
-(SimulationJob rows + Telemetry rows in the shared schema) does not change.
+Digital-twin mode: rack telemetry is now DERIVED from the latest real
+laptop reading instead of synthetic WORKLOAD_PROFILES. Rack 1 is an exact
+mirror of the laptop; Racks 2..N apply fixed per-rack "hardware profile"
+multipliers (cooling efficiency, hardware age, airflow, etc.) plus small
+noise on top of the same base signal, and a time-varying workload-drift
+curve so utilisation still evolves tick-to-tick. This keeps the adapter's
+public contract (SimulationJob rows + Telemetry rows in the shared schema)
+unchanged — only `_run_job`'s internals differ.
 
 Jobs run as a background thread (SDD Section 15.3: "asynchronous ...
 clients poll GET /api/v1/simulate/opendc/{job_id}"; in AWS this maps to an
@@ -32,15 +25,9 @@ from app.config import settings
 from app.database import SessionLocal
 from app.digital_twin.laptop_mode import DigitalTwinEngine, RackProfile
 from app.water_model.thermo import WaterModel
+from app.services.weather_services import get_current_weather
 
 from app.models_ext import Site, SimulationJob
-
-WORKLOAD_PROFILES = {
-    "steady": lambda tick: 45 + random.uniform(-5, 5),
-    "bursty": lambda tick: 20 + (55 if tick % 5 == 0 else 0) + random.uniform(-5, 5),
-    "cpu_intensive": lambda tick: 82 + random.uniform(-6, 10),
-    "idle": lambda tick: 6 + random.uniform(0, 6),
-}
 
 
 def _clamp(v: float) -> float:
@@ -58,6 +45,72 @@ class _SyntheticReading:
         self.fan_rpm = fan_rpm
 
 
+# ---------------------------------------------------------------------------
+# Rack hardware profiles
+#
+# Each rack (besides Rack 1, the laptop mirror) gets a FIXED set of
+# per-rack multipliers, assigned once per job from a seeded RNG keyed on
+# rack index, so a given rack index behaves consistently rack-to-rack and
+# run-to-run is still varied by job. This models real fleet heterogeneity
+# (different hardware generations, airflow, cooling) rather than pure
+# per-tick randomness.
+# ---------------------------------------------------------------------------
+def _make_rack_profile(rack_index: int, rng: random.Random) -> dict:
+    if rack_index == 1:
+        # Rack 1 is the exact laptop mirror — no distortion applied.
+        return {
+            "cpu_factor": 1.0,
+            "gpu_factor": 1.0,
+            "ram_factor": 1.0,
+            "cooling_efficiency": 1.0,
+            "hardware_age": 1.0,
+        }
+    return {
+        "cpu_factor": rng.uniform(0.85, 1.15),
+        "gpu_factor": rng.uniform(0.85, 1.15),
+        "ram_factor": rng.uniform(0.90, 1.10),
+        "cooling_efficiency": rng.uniform(0.90, 1.05),
+        "hardware_age": rng.uniform(0.95, 1.20),
+    }
+
+
+def _workload_drift(tick: int, rng: random.Random) -> float:
+    """
+    Small tick-over-tick drift factor so utilisation still evolves over the
+    course of the simulation, instead of being frozen at the single laptop
+    reading for every tick. Centered at 1.0.
+    """
+    return 1.0 + 0.05 * (rng.uniform(-1, 1)) + 0.03 * (tick % 5 - 2) / 2.0
+
+
+def _get_latest_laptop_reading(db) -> "models.Telemetry | None":
+    """
+    Fetches the most recent laptop-sourced telemetry row to use as the
+    digital twin's reference baseline (Rack 1). Falls back to None if no
+    laptop telemetry exists yet, in which case callers should use safe
+    idle defaults rather than fail the job.
+    """
+    return (
+        db.query(models.Telemetry)
+        .filter(models.Telemetry.source == "laptop")
+        .order_by(models.Telemetry.telemetry_id.desc())
+        .first()
+    )
+
+
+def _derive_reading(base_cpu: float, base_ram: float, base_gpu, profile: dict,
+                     tick: int, rng: random.Random) -> _SyntheticReading:
+    drift = _workload_drift(tick, rng)
+
+    cpu = _clamp(base_cpu * profile["cpu_factor"] * drift + rng.uniform(-2, 2))
+    ram = _clamp(base_ram * profile["ram_factor"] * drift + rng.uniform(-2, 2))
+    gpu = None
+    if base_gpu is not None:
+        gpu = _clamp(base_gpu * profile["gpu_factor"] * drift + rng.uniform(-2, 2))
+
+    return _SyntheticReading(cpu_pct=cpu, ram_pct=ram, gpu_pct=gpu)
+
+
 def _run_job(job_id: str, spec: dict) -> None:
     db = SessionLocal()
     try:
@@ -67,9 +120,28 @@ def _run_job(job_id: str, spec: dict) -> None:
 
         mode = spec.get("mode", "opendc")
         num_racks = max(1, int(spec.get("num_racks", 5)))
-        profile_name = spec.get("workload_profile", "steady")
         ticks = max(1, int(spec.get("duration_ticks", 20)))
-        profile_fn = WORKLOAD_PROFILES.get(profile_name, WORKLOAD_PROFILES["steady"])
+
+        # Deterministic-per-job RNG seed so rack profiles are stable across
+        # a single run's ticks but still vary run-to-run.
+        rng = random.Random(spec.get("seed", job_id))
+
+        # --- Digital twin baseline: real laptop telemetry -----------------
+        laptop_reading = _get_latest_laptop_reading(db)
+        if laptop_reading is not None:
+            base_cpu = laptop_reading.cpu_pct or 0.0
+            base_ram = laptop_reading.ram_pct or 0.0
+            base_gpu = laptop_reading.gpu_pct  # may be None
+        else:
+            # No laptop telemetry collected yet — safe idle fallback so the
+            # job doesn't crash, but this should be rare/transient.
+            base_cpu, base_ram, base_gpu = 5.0, 10.0, None
+
+        # All racks in this job share one ambient weather reading — they're
+        # in the same simulated facility, not fetched per-rack/per-tick.
+        weather = get_current_weather(db)
+        ambient_temp = weather["temperature"]
+        humidity = weather["humidity"]
 
         site = Site(
             name=spec.get("site_name") or f"{mode}-site-{job_id[:8]}",
@@ -83,6 +155,9 @@ def _run_job(job_id: str, spec: dict) -> None:
         total_ticks = num_racks * ticks
 
         for r in range(num_racks):
+            rack_index = r + 1
+            profile = _make_rack_profile(rack_index, rng)
+
             rack = models.Rack(
                 capacity_kw=spec.get("capacity_kw", 8.0),
                 node_count=spec.get("node_count", 4),
@@ -92,23 +167,23 @@ def _run_job(job_id: str, spec: dict) -> None:
             db.add(rack)
             db.commit()
             db.refresh(rack)
-            db.add(models.RackConfig(rack_id=rack.rack_id, mode=mode, sim_params=spec))
+            db.add(models.RackConfig(
+                rack_id=rack.rack_id,
+                mode=mode,
+                sim_params={**spec, "rack_profile": profile, "is_laptop_mirror": rack_index == 1},
+            ))
             db.commit()
 
             twin = DigitalTwinEngine(
                 RackProfile.load_config(rack.rack_id, rack.capacity_kw, rack.node_count), mode=mode
             )
-            device_id = f"{mode}-rack-{r + 1}-{job_id[:6]}"
+            device_id = f"{mode}-rack-{rack_index}-{job_id[:6]}"
 
             last_twin_state = None
             last_water_out = None
 
             for t in range(ticks):
-                util_seed = _clamp(profile_fn(t))
-                reading = _SyntheticReading(
-                    cpu_pct=util_seed,
-                    ram_pct=_clamp(util_seed * 0.8 + random.uniform(-3, 3)),
-                )
+                reading = _derive_reading(base_cpu, base_ram, base_gpu, profile, t, rng)
                 twin_state = twin.simulate(reading)
 
                 row = models.Telemetry(
@@ -117,19 +192,24 @@ def _run_job(job_id: str, spec: dict) -> None:
                     site_id=site.site_id,
                     cpu_pct=reading.cpu_pct,
                     ram_pct=reading.ram_pct,
-                    gpu_pct=None,
+                    gpu_pct=reading.gpu_pct,
                     source=mode,
+                    weather_temp=ambient_temp,
+    humidity=humidity,
                 )
                 db.add(row)
                 db.commit()
                 db.refresh(row)
 
                 water = WaterModel(
-                    ambient_temp=settings.DEFAULT_AMBIENT_TEMP_C,
-                    humidity=settings.DEFAULT_HUMIDITY_PCT,
+                    ambient_temp=ambient_temp,
+                    humidity=humidity,
                     pue_thermal_overhead=settings.PUE_THERMAL_OVERHEAD,
                 )
-                water_out = water.compute_water_usage(twin_state.thermal_load_kw)
+                # Cooling efficiency of this rack's hardware profile feeds
+                # into thermal load before the water model sees it.
+                adjusted_thermal_kw = twin_state.thermal_load_kw / max(0.5, profile["cooling_efficiency"])
+                water_out = water.compute_water_usage(adjusted_thermal_kw)
                 db.add(
                     models.WaterModelResult(
                         telemetry_id=row.telemetry_id,
@@ -138,7 +218,7 @@ def _run_job(job_id: str, spec: dict) -> None:
                         water_l_per_hr=water_out["water_l_per_hr"],
                         pue=water_out["pue"],
                         utilisation_pct=twin_state.utilisation_pct,
-                        thermal_load_kw=twin_state.thermal_load_kw,
+                        thermal_load_kw=adjusted_thermal_kw,
                         power_draw_kw=twin_state.power_draw_kw,
                     )
                 )
@@ -172,6 +252,8 @@ def _run_job(job_id: str, spec: dict) -> None:
                 {
                     "rack_id": rack.rack_id,
                     "device_id": device_id,
+                    "is_laptop_mirror": rack_index == 1,
+                    "rack_profile": profile,
                     "final_utilisation_pct": last_twin_state.utilisation_pct,
                     "final_thermal_load_kw": last_twin_state.thermal_load_kw,
                     "final_water_model": last_water_out,
@@ -188,7 +270,9 @@ def _run_job(job_id: str, spec: dict) -> None:
             "site_id": site.site_id,
             "site_name": site.name,
             "num_racks": num_racks,
-            "workload_profile": profile_name,
+            "baseline_source": "laptop" if laptop_reading is not None else "idle_fallback",
+            "baseline_reading": {"cpu_pct": base_cpu, "ram_pct": base_ram, "gpu_pct": base_gpu},
+            "weather": {"ambient_temp": ambient_temp, "humidity": humidity, "source": weather.get("source")},
             "racks": rack_results,
             "fleet_thermal_load_kw": round(fleet_thermal_kw, 3),
             "fleet_water_l_per_hr": round(fleet_water_l_per_hr, 3),
@@ -224,29 +308,41 @@ def submit_job(db, spec: dict) -> SimulationJob:
     return job
 
 
-def simulate_scaled_racks(db, laptop_telemetry: models.Telemetry, num_racks: int = 100) -> dict:
+def simulate_scaled_racks(db, laptop_telemetry: "models.Telemetry", num_racks: int = 100) -> dict:
     """
-    Scales single laptop telemetry (Rack 1) across Racks 2 to num_racks.
-    Calculates aggregated fleet thermal load, GPU power draw, and water consumption.
+    Scales single laptop telemetry (Rack 1) across Racks 2 to num_racks
+    using the same fixed-per-rack-profile approach as _run_job, instead of
+    unbounded per-call randomness. Calculates aggregated fleet thermal
+    load, GPU power draw, and water consumption.
+
+    Prefers the real weather already attached to laptop_telemetry (set at
+    collection time); calling get_current_weather here as a fallback
+    keeps the Weather table populated even for telemetry rows collected
+    before weather was wired in.
     """
-    base_cpu = laptop_telemetry.cpu_pct
+    base_cpu = laptop_telemetry.cpu_pct or 0.0
     base_gpu = laptop_telemetry.gpu_pct or 0.0
     base_water = laptop_telemetry.predicted_water_usage or 1.2
+
+    if laptop_telemetry.weather_temp is None or laptop_telemetry.humidity is None:
+        get_current_weather(db)
+
+    rng = random.Random(f"scaled-{laptop_telemetry.telemetry_id}")
 
     racks = []
     total_water = 0.0
     total_thermal_kw = 0.0
 
     for r in range(1, num_racks + 1):
+        profile = _make_rack_profile(r, rng)
         if r == 1:
             rack_cpu = base_cpu
             rack_gpu = base_gpu
         else:
-            # Add synthetic variation across racks
-            rack_cpu = _clamp(base_cpu + random.uniform(-15.0, 15.0))
-            rack_gpu = _clamp(base_gpu + random.uniform(-20.0, 20.0))
+            rack_cpu = _clamp(base_cpu * profile["cpu_factor"] + rng.uniform(-2, 2))
+            rack_gpu = _clamp(base_gpu * profile["gpu_factor"] + rng.uniform(-2, 2))
 
-        thermal_kw = (rack_cpu * 0.03 + rack_gpu * 0.05) + 2.0
+        thermal_kw = (rack_cpu * 0.03 + rack_gpu * 0.05) / max(0.5, profile["cooling_efficiency"]) + 2.0
         water_l_hr = base_water * (0.8 + 0.4 * (rack_gpu / 100.0))
         total_water += water_l_hr
         total_thermal_kw += thermal_kw
@@ -267,4 +363,3 @@ def simulate_scaled_racks(db, laptop_telemetry: models.Telemetry, num_racks: int
         "fleet_total_thermal_kw": round(total_thermal_kw, 2),
         "racks_sample": racks[:10],
     }
-

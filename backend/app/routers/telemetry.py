@@ -41,6 +41,8 @@ def ingest_telemetry(reading: schemas.TelemetryReadingIn, db: Session = Depends(
         disk_io=reading.disk_io,
         fan_rpm=reading.fan_rpm,
         battery_pct=reading.battery_pct,
+        weather_temp=reading.weather_temp,
+        humidity=reading.humidity,
         source=reading.source,
     )
     db.add(row)

@@ -1,14 +1,22 @@
 """
-Central configuration for AquaRack.
+Central configuration for AquaRack / RackPulse.
 """
 
 import os
+import logging
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# D:\Projects\RackPulse\backend\app\config.py -> parent -> app
+#                                              -> parent -> backend
+#                                              -> parent -> RackPulse (repo root)
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 class Settings(BaseSettings):
+
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=BASE_DIR / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -20,10 +28,14 @@ class Settings(BaseSettings):
     API_PORT: int = 8000
     API_TOKEN: str = ""
 
+
     # ==========================================================
     # DATABASE
     # ==========================================================
-    DATABASE_URL: str = "cockroachdb://root@localhost:26257/aquarack?sslmode=disable"
+    DATABASE_URL: str = (
+        "cockroachdb://root@localhost:26257/aquarack?sslmode=disable"
+    )
+
 
     # ==========================================================
     # DIGITAL TWIN
@@ -33,21 +45,42 @@ class Settings(BaseSettings):
 
     DEFAULT_AMBIENT_TEMP_C: float = 24.0
     DEFAULT_HUMIDITY_PCT: float = 55.0
+
+    # Thermal overhead for cooling estimation
     PUE_THERMAL_OVERHEAD: float = 0.4
+
+
+    # ==========================================================
+    # WEATHER API / ENVIRONMENT SIMULATION
+    # ==========================================================
+    WEATHER_ENABLED: bool = False
+
+    # Faisalabad default coordinates
+    WEATHER_LAT: float = 31.4187
+    WEATHER_LON: float = 73.0791
+
+    WEATHER_REFRESH_SECONDS: int = 900
+
+
 
     # ==========================================================
     # OLLAMA
     # ==========================================================
     OLLAMA_ENABLED: bool = True
-    OLLAMA_BASE_URL: str = "http://localhost:11434"
 
-    # Recommended:
+    OLLAMA_BASE_URL: str = (
+        "http://localhost:11434"
+    )
+
     OLLAMA_MODEL: str = "llama3.1"
 
-    # Embeddings
-    OLLAMA_EMBED_MODEL: str = "nomic-embed-text"
+    OLLAMA_EMBED_MODEL: str = (
+        "nomic-embed-text"
+    )
 
     OLLAMA_TIMEOUT_SECONDS: int = 60
+
+
 
     # ==========================================================
     # BEDROCK (Optional)
@@ -56,45 +89,69 @@ class Settings(BaseSettings):
 
     AWS_REGION: str = "us-east-1"
 
-    BEDROCK_EMBED_MODEL_ID: str = "amazon.titan-embed-text-v2:0"
+    BEDROCK_EMBED_MODEL_ID: str = (
+        "amazon.titan-embed-text-v2:0"
+    )
 
-    BEDROCK_TEXT_MODEL_ID: str = "us.anthropic.claude-sonnet-5"
+    BEDROCK_TEXT_MODEL_ID: str = (
+        "us.anthropic.claude-sonnet-5"
+    )
+
+
 
     # ==========================================================
     # AMAZON S3
     # ==========================================================
     S3_ENABLED: bool = True
 
-    S3_BUCKET: str = os.getenv("S3_BUCKET", "")
+    S3_BUCKET: str = os.getenv(
+        "S3_BUCKET",
+        ""
+    )
 
     S3_PREFIX: str = "cold"
 
-    S3_LOCAL_FALLBACK_DIR: str = "./s3_lake"
+    S3_LOCAL_FALLBACK_DIR: str = (
+        "./s3_lake"
+    )
+
+
 
     # ==========================================================
     # AWS LAMBDA
     # ==========================================================
-    LAMBDA_RETIER_SCHEDULE: str = "rate(1 hour)"
+    LAMBDA_RETIER_SCHEDULE: str = (
+        "rate(1 hour)"
+    )
+
+
 
     # ==========================================================
     # SECRETS MANAGER
     # ==========================================================
-    # Leave disabled unless you actually created a Secret.
     SECRETS_MANAGER_ENABLED: bool = False
 
-    SECRETS_MANAGER_SECRET_NAME: str = "aquamind/config"
+    SECRETS_MANAGER_SECRET_NAME: str = (
+        "aquamind/config"
+    )
+
+
 
     # ==========================================================
     # CLOUDWATCH
     # ==========================================================
     CLOUDWATCH_ENABLED: bool = True
 
-    CLOUDWATCH_LOG_GROUP: str = "/aquamind/reasoning"
+    CLOUDWATCH_LOG_GROUP: str = (
+        "/aquamind/reasoning"
+    )
 
     CLOUDWATCH_LOG_STREAM: str = os.getenv(
         "AQUARACK_DEVICE_ID",
         "rack-01-primary",
     )
+
+
 
     # ==========================================================
     # COLLECTOR
@@ -106,14 +163,56 @@ class Settings(BaseSettings):
 
     POLL_INTERVAL_SECONDS: int = 5
 
-    LOCAL_QUEUE_DB: str = "./collector_queue.db"
+    LOCAL_QUEUE_DB: str = (
+        "./collector_queue.db"
+    )
+
+
 
     # ==========================================================
     # REPORTS
     # ==========================================================
-    REPORTS_DIR: str = "./reports"
+    REPORTS_DIR: str = (
+        "./reports"
+    )
 
+
+
+# ==========================================================
+# CREATE SETTINGS INSTANCE
+# ==========================================================
 
 settings = Settings()
 
-os.makedirs(settings.REPORTS_DIR, exist_ok=True)
+
+
+# ==========================================================
+# LOG CONFIGURATION
+# ==========================================================
+
+logger = logging.getLogger("aquamind")
+
+logger.info(
+    "Config loaded: BASE_DIR=%s env_file_exists=%s WEATHER_ENABLED=%s WEATHER_LAT=%s WEATHER_LON=%s",
+    BASE_DIR,
+    (BASE_DIR / ".env").exists(),
+    settings.WEATHER_ENABLED,
+    settings.WEATHER_LAT,
+    settings.WEATHER_LON,
+)
+
+
+
+# ==========================================================
+# CREATE REQUIRED DIRECTORIES
+# ==========================================================
+
+os.makedirs(
+    settings.REPORTS_DIR,
+    exist_ok=True
+)
+
+os.makedirs(
+    settings.S3_LOCAL_FALLBACK_DIR,
+    exist_ok=True
+)

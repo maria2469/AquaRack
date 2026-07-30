@@ -36,6 +36,12 @@ class TelemetryReadingIn(BaseModel):
     disk_io: Optional[float] = None
     fan_rpm: Optional[int] = None
     battery_pct: Optional[float] = None
+    # Ambient weather, attached at collection time by run_collector.py via
+    # app.services.weather_service. Optional so existing callers/tests that
+    # don't set it still validate; downstream code treats None as "look it
+    # up live" rather than silently defaulting to a hardcoded temperature.
+    weather_temp: Optional[float] = None
+    humidity: Optional[float] = None
     source: SourceEnum = SourceEnum.laptop
 
 
@@ -53,6 +59,8 @@ class TelemetryReadingOut(BaseModel):
     disk_io: Optional[float] = None
     fan_rpm: Optional[int] = None
     battery_pct: Optional[float] = None
+    weather_temp: Optional[float] = None
+    humidity: Optional[float] = None
     source: str
 
 

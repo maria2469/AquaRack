@@ -24,6 +24,7 @@ from app.agents.orchestrator import orchestrator
 from app.routers.simulate import run_full_pipeline
 from app.water_model.thermo import WaterModel
 from app.digital_twin.opendc_adapter import simulate_scaled_racks
+from app.services.weather_services import get_current_weather
 from app.db_retry import crdb_retry
 
 logger = logging.getLogger("aquarack.enterprise_api")
@@ -31,12 +32,46 @@ logger = logging.getLogger("aquarack.enterprise_api")
 router = APIRouter(prefix="/api", tags=["enterprise"])
 
 
+def _log_weather_provenance(context: str, *, source: str = None, ambient_temp: float = None,
+                             humidity: float = None) -> None:
+    """
+    Single place to log whether a given code path used REAL weather
+    (open-meteo, or a telemetry row that was stamped with it at
+    collection time) vs a FALLBACK/hardcoded value. Grep logs for
+    'WEATHER SOURCE' to audit every endpoint at runtime.
+    """
+    is_real = source in ("open-meteo", "telemetry_attached")
+    logger.info(
+        "WEATHER SOURCE [%s]: source=%s real=%s temp=%s humidity=%s",
+        context,
+        source,
+        is_real,
+        f"{ambient_temp:.1f}" if ambient_temp is not None else None,
+        f"{humidity:.1f}" if humidity is not None else None,
+    )
+    if not is_real:
+        logger.warning(
+            "WEATHER SOURCE [%s]: NOT using real weather (source=%s) — check WEATHER_ENABLED, "
+            "WEATHER_LAT/WEATHER_LON, and Open-Meteo connectivity.",
+            context,
+            source,
+        )
+
+
 @router.get("/telemetry/latest")
 def get_latest_telemetry(db: Session = Depends(get_db)):
     """GET /api/telemetry/latest - Retrieve current live laptop & weather telemetry."""
     row = db.query(models.Telemetry).order_by(models.Telemetry.timestamp.desc()).first()
     if not row:
-        # Generate initial telemetry if none exists
+        # Generate initial telemetry if none exists — still uses real
+        # current weather rather than a hardcoded reading.
+        weather = get_current_weather(db)
+        _log_weather_provenance(
+            "telemetry/latest (seed row)",
+            source=weather["source"],
+            ambient_temp=weather["temperature"],
+            humidity=weather["humidity"],
+        )
         row = models.Telemetry(
             device_id="rack-01-primary",
             cpu_pct=42.5,
@@ -44,14 +79,21 @@ def get_latest_telemetry(db: Session = Depends(get_db)):
             gpu_temp=58.5,
             ram_pct=52.0,
             disk_io=12.4,
-            weather_temp=39.0,
-            humidity=62.0,
+            weather_temp=weather["temperature"],
+            humidity=weather["humidity"],
             predicted_water_usage=1.45,
             source="laptop",
         )
         db.add(row)
         db.commit()
         db.refresh(row)
+    else:
+        _log_weather_provenance(
+            "telemetry/latest (existing row)",
+            source="telemetry_attached" if row.weather_temp is not None else "missing_on_row",
+            ambient_temp=row.weather_temp,
+            humidity=row.humidity,
+        )
     return {
         "telemetry_id": row.telemetry_id,
         "rack_id": row.rack_id or "Rack-1 (Laptop)",
@@ -62,8 +104,8 @@ def get_latest_telemetry(db: Session = Depends(get_db)):
         "gpu_temp": row.gpu_temp or 58.5,
         "ram_usage": row.ram_pct,
         "disk_io": row.disk_io or 0.0,
-        "weather_temp": row.weather_temp or 39.0,
-        "humidity": row.humidity or 62.0,
+        "weather_temp": row.weather_temp,
+        "humidity": row.humidity,
         "predicted_water_usage": row.predicted_water_usage or 1.45,
     }
 
@@ -82,10 +124,17 @@ def list_incidents(
     if not incidents:
         # Seed initial incident for demo if empty
         t_row = db.query(models.Telemetry).first()
+        weather = get_current_weather(db)
+        _log_weather_provenance(
+            "incidents (seed)",
+            source=weather["source"],
+            ambient_temp=weather["temperature"],
+            humidity=weather["humidity"],
+        )
         inc = models.Incident(
             telemetry_id=t_row.telemetry_id if t_row else None,
             severity="HIGH",
-            description="Thermal spike detected on Rack-1 GPU under high ambient weather (39°C)",
+            description=f"Thermal spike detected on Rack-1 GPU under high ambient weather ({weather['temperature']:.1f}°C)",
             root_cause="High ambient heat and heavy parallel AI matrix multiplication workload",
             resolved=False,
         )
@@ -150,10 +199,33 @@ def generate_agent_reasoning(
     # Route task through multi-agent orchestrator with CockroachDB MCP Client
     result = orchestrator.route_task(db, twin_state, water_out, open_incidents)
 
+    # Real ambient weather for this reading — prefer what's already
+    # attached to telemetry (set at collection time); fall back to a live
+    # fetch only if the reading predates weather being wired in.
+    if reading.weather_temp is not None and reading.humidity is not None:
+        ambient_temp = reading.weather_temp
+        humidity = reading.humidity
+        _log_weather_provenance(
+            "reason (from telemetry row)",
+            source="telemetry_attached",
+            ambient_temp=ambient_temp,
+            humidity=humidity,
+        )
+    else:
+        weather = get_current_weather(db)
+        ambient_temp = weather["temperature"]
+        humidity = weather["humidity"]
+        _log_weather_provenance(
+            "reason (live fetch, telemetry row missing weather)",
+            source=weather["source"],
+            ambient_temp=ambient_temp,
+            humidity=humidity,
+        )
+
     # Calculate thermodynamic water metrics
     w_model = WaterModel(
-        ambient_temp=reading.weather_temp or 39.0,
-        humidity=reading.humidity or 62.0,
+        ambient_temp=ambient_temp,
+        humidity=humidity,
         cooling_strategy="hybrid_evaporative",
     )
     thermo_res = w_model.compute_water_usage(twin_state.thermal_load_kw, reading.cpu_pct, reading.gpu_pct or 0.0)
@@ -164,7 +236,7 @@ def generate_agent_reasoning(
         inc_row = models.Incident(
             telemetry_id=reading.telemetry_id,
             severity="HIGH" if (reading.gpu_pct or 0) > 85 else "WARN",
-            description=f"GPU utilization at {reading.gpu_pct:.1f}% with weather temp {reading.weather_temp or 39}°C",
+            description=f"GPU utilization at {reading.gpu_pct:.1f}% with weather temp {ambient_temp:.1f}°C",
             root_cause="Heavy AI model inference workload under extreme ambient weather",
         )
         db.add(inc_row)
@@ -216,8 +288,8 @@ def generate_agent_reasoning(
     return {
         "run_id": result.get("run_id"),
         "recommendation": rec_text,
-        "explanation": f"Current GPU usage is {reading.gpu_pct or 68:.1f}% under ambient weather of {reading.weather_temp or 39}°C. CockroachDB vector index matched historical incidents.",
-        "root_cause": inc_row.root_cause if inc_row else "Elevated IT power draw under summer heat",
+        "explanation": f"Current GPU usage is {reading.gpu_pct or 0:.1f}% under ambient weather of {ambient_temp:.1f}°C. CockroachDB vector index matched historical incidents.",
+        "root_cause": inc_row.root_cause if inc_row else "Elevated IT power draw under ambient weather",
         "expected_water_saving": expected_saving,
         "confidence": confidence_score,
         "confidence_pct": round(confidence_score * 100, 1),
@@ -271,6 +343,14 @@ def get_memory_history(
 def _fetch_enterprise_dashboard(db: Session) -> dict:
     """All DB reads for /api/dashboard — isolated for CRDB retry."""
     t_row = db.query(models.Telemetry).order_by(models.Telemetry.timestamp.desc()).first()
+
+    if t_row is not None:
+        _log_weather_provenance(
+            "dashboard (fleet baseline row)",
+            source="telemetry_attached" if t_row.weather_temp is not None else "missing_on_row",
+            ambient_temp=t_row.weather_temp,
+            humidity=t_row.humidity,
+        )
 
     # OpenDC scaling Racks 2-100
     opendc_fleet = simulate_scaled_racks(db, t_row, num_racks=100) if t_row else {}
