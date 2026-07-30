@@ -15,7 +15,7 @@ export default function AgentExplanationPanel({
         <BrainCircuit className="animate-spin text-coolant mb-3" size={32} />
         <h3 className="font-heading font-semibold text-frost text-base">Awaiting Reasoning Execution</h3>
         <p className="text-xs text-mist font-mono mt-1 max-w-xs mb-4">
-          Click below to initiate Bedrock multi-agent reasoning over CockroachDB vector memory.
+          Click below to initiate Ollama multi-agent reasoning over CockroachDB vector memory.
         </p>
         {onRunReasoning && (
           <button
@@ -24,7 +24,7 @@ export default function AgentExplanationPanel({
             className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-coolant via-flow to-signal text-abyss font-semibold px-5 py-2.5 text-xs shadow-lg hover:brightness-110 transition-all disabled:opacity-50"
           >
             {isReasoning ? <RefreshCw size={14} className="animate-spin" /> : <Play size={14} />}
-            Run Bedrock Reasoning Loop
+            Run Ollama Reasoning Loop
           </button>
         )}
       </div>
@@ -56,7 +56,7 @@ export default function AgentExplanationPanel({
                 Agent Memory Reasoning
               </h2>
               <p className="text-[11px] text-mist font-mono">
-                CockroachDB Managed MCP + Bedrock Titan
+                CockroachDB Managed MCP + Ollama
               </p>
             </div>
           </div>

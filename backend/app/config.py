@@ -1,67 +1,119 @@
 """
-Central configuration for AquaRack (SDD Section 19 — deployment;
-Section 17.1 — security defaults).
-
-All values are overridable via environment variables / a local .env file
-(excluded from version control, per Section 17.1).
+Central configuration for AquaRack.
 """
-import os
 
+import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
-    # --- API / server ---
-    API_HOST: str = "127.0.0.1"  # local-only binding by default (Section 17.1)
+    # ==========================================================
+    # API
+    # ==========================================================
+    API_HOST: str = "127.0.0.1"
     API_PORT: int = 8000
-    API_TOKEN: str = ""  # optional bearer token; disabled unless set
+    API_TOKEN: str = ""
 
-    # --- Database (SDD Tech Stack: CockroachDB) ---
-    # Defaults to a local CockroachDB node (e.g. `cockroach start-single-node
-    # --insecure` or the docker-compose `cockroachdb` service). Point
-    # DATABASE_URL at CockroachDB Cloud / a secured cluster in production.
-    # SQLite remains available as an explicit opt-out for offline dev
-    # (set DATABASE_URL=sqlite:///./aquarack_local.db) but is no longer the
-    # default, since the SDD tech stack calls for CockroachDB.
+    # ==========================================================
+    # DATABASE
+    # ==========================================================
     DATABASE_URL: str = "cockroachdb://root@localhost:26257/aquarack?sslmode=disable"
 
-    # --- Rack / Digital Twin defaults (Section 12.2) ---
+    # ==========================================================
+    # DIGITAL TWIN
+    # ==========================================================
     RACK_CAPACITY_KW: float = 5.0
     RACK_NODE_COUNT: int = 1
 
-    # --- Water Model defaults (Section 13) ---
     DEFAULT_AMBIENT_TEMP_C: float = 24.0
     DEFAULT_HUMIDITY_PCT: float = 55.0
     PUE_THERMAL_OVERHEAD: float = 0.4
 
-    # --- Bedrock (SDD Tech Stack: Amazon Bedrock reasoning, via LangChain) ---
-    # Enabled by default per the SDD tech stack. Requires AWS credentials
-    # with bedrock:InvokeModel access in AWS_REGION and model access
-    # granted in the Bedrock console. If credentials are missing or a call
-    # fails for any reason, every call site falls back automatically to
-    # the deterministic local implementation (FR-1.11) — set
-    # BEDROCK_ENABLED=false explicitly to skip Bedrock entirely (e.g. CI).
-    BEDROCK_ENABLED: bool = True
+    # ==========================================================
+    # OLLAMA
+    # ==========================================================
+    OLLAMA_ENABLED: bool = True
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+
+    # Recommended:
+    OLLAMA_MODEL: str = "llama3.1"
+
+    # Embeddings
+    OLLAMA_EMBED_MODEL: str = "nomic-embed-text"
+
+    OLLAMA_TIMEOUT_SECONDS: int = 60
+
+    # ==========================================================
+    # BEDROCK (Optional)
+    # ==========================================================
+    BEDROCK_ENABLED: bool = False
+
     AWS_REGION: str = "us-east-1"
-    BEDROCK_EMBED_MODEL_ID: str = "us.amazon.titan-embed-text-v2:0"
-    # Claude Sonnet 5 — near-instant agentic responses, 1M context, tool use.
-    # Newer Bedrock models require Inference Profile IDs (us. prefix).
-    # Switch to "us.anthropic.claude-opus-5" for maximum reasoning depth.
+
+    BEDROCK_EMBED_MODEL_ID: str = "amazon.titan-embed-text-v2:0"
+
     BEDROCK_TEXT_MODEL_ID: str = "us.anthropic.claude-sonnet-5"
 
-    # --- Collector (Section 14) ---
-    DEVICE_ID: str = os.environ.get("AQUARACK_DEVICE_ID", "rack-01-primary")
+    # ==========================================================
+    # AMAZON S3
+    # ==========================================================
+    S3_ENABLED: bool = True
+
+    S3_BUCKET: str = os.getenv("S3_BUCKET", "")
+
+    S3_PREFIX: str = "cold"
+
+    S3_LOCAL_FALLBACK_DIR: str = "./s3_lake"
+
+    # ==========================================================
+    # AWS LAMBDA
+    # ==========================================================
+    LAMBDA_RETIER_SCHEDULE: str = "rate(1 hour)"
+
+    # ==========================================================
+    # SECRETS MANAGER
+    # ==========================================================
+    # Leave disabled unless you actually created a Secret.
+    SECRETS_MANAGER_ENABLED: bool = False
+
+    SECRETS_MANAGER_SECRET_NAME: str = "aquamind/config"
+
+    # ==========================================================
+    # CLOUDWATCH
+    # ==========================================================
+    CLOUDWATCH_ENABLED: bool = True
+
+    CLOUDWATCH_LOG_GROUP: str = "/aquamind/reasoning"
+
+    CLOUDWATCH_LOG_STREAM: str = os.getenv(
+        "AQUARACK_DEVICE_ID",
+        "rack-01-primary",
+    )
+
+    # ==========================================================
+    # COLLECTOR
+    # ==========================================================
+    DEVICE_ID: str = os.getenv(
+        "AQUARACK_DEVICE_ID",
+        "rack-01-primary",
+    )
+
     POLL_INTERVAL_SECONDS: int = 5
+
     LOCAL_QUEUE_DB: str = "./collector_queue.db"
 
-    # --- Reporting (Section 10.1) ---
+    # ==========================================================
+    # REPORTS
+    # ==========================================================
     REPORTS_DIR: str = "./reports"
 
 
 settings = Settings()
 
-# Ensure the reports directory exists so /api/v1/reports/daily?format=pdf
-# can always write its output file.
 os.makedirs(settings.REPORTS_DIR, exist_ok=True)

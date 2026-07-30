@@ -60,9 +60,17 @@ def daily_report(format: str = Query("csv", pattern="^(csv|pdf)$"), db: Session 
         writer.writeheader()
         for r in rows:
             writer.writerow(r)
-        buf.seek(0)
+        csv_content = buf.getvalue()
+        
+        # Upload to S3 if configured
+        try:
+            from app.lib.s3_client import upload_report_to_s3
+            upload_report_to_s3("aquamind_daily_report.csv", csv_content, content_type="text/csv")
+        except Exception:
+            pass
+
         return StreamingResponse(
-            iter([buf.getvalue()]),
+            iter([csv_content]),
             media_type="text/csv",
             headers={"Content-Disposition": "attachment; filename=aquamind_daily_report.csv"},
         )
@@ -104,6 +112,13 @@ def daily_report(format: str = Query("csv", pattern="^(csv|pdf)$"), db: Session 
     )
     elements.append(table)
     doc.build(elements)
+
+    try:
+        from app.lib.s3_client import upload_report_to_s3
+        with open(path, "rb") as pdf_file:
+            upload_report_to_s3("aquamind_daily_report.pdf", pdf_file.read(), content_type="application/pdf")
+    except Exception:
+        pass
 
     def iterfile():
         with open(path, "rb") as f:

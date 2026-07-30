@@ -1,3 +1,7 @@
+import os
+os.environ["DATABASE_URL"] = "sqlite:///./test_aquamind_mcp.db"
+os.environ["OLLAMA_ENABLED"] = "false"
+
 import pytest
 from fastapi.testclient import TestClient
 from app.main import app

@@ -75,7 +75,7 @@ class Orchestrator:
         analyst_out = self.telemetry_analyst.run(context)
         trace.append(analyst_out)
 
-        rl.log_step(run_id, "orchestrator", "reasoning", {"note": "Routing to water_cooling (LangChain + Bedrock)"})
+        rl.log_step(run_id, "orchestrator", "reasoning", {"note": "Routing to water_cooling (LangChain + Ollama)"})
         water_draft = self.water_cooling.run(context)
         trace.append(water_draft)
 

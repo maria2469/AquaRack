@@ -8,9 +8,9 @@ const fadeUp = {
 };
 
 const stack = [
-  { group: "Orchestration", items: ["FastAPI", "Pydantic", "SQLAlchemy", "AsyncIO"] },
-  { group: "Data & Memory", items: ["CockroachDB", "Native Vector Index (<=>)", "SQLite local buffer"] },
-  { group: "AI Reasoning", items: ["Amazon Bedrock", "Titan Embeddings V2", "LangChain ChatBedrockConverse"] },
+  { group: "Orchestration", items: ["FastAPI", "Pydantic", "SQLAlchemy", "AWS Lambda", "AsyncIO"] },
+  { group: "Data & Memory", items: ["CockroachDB Managed MCP", "Distributed Vector Index (<=>)", "Amazon S3 Cold Storage"] },
+  { group: "AI Reasoning", items: ["Ollama (Llama 3.1 / Qwen2.5)", "Ollama Embeddings", "LangChain ChatOllama", "CloudWatch Logs"] },
   { group: "Frontend & UI", items: ["React 18", "Tailwind CSS", "Three.js / R3F Shaders", "Lucide React"] },
 ];
 
@@ -53,7 +53,7 @@ export default function About() {
             className="mt-6 text-lg text-mist leading-relaxed max-w-2xl"
           >
             AquaRack combines live hardware telemetry, thermodynamic water modeling,
-            CockroachDB native vector indexing, and Amazon Bedrock reasoning to solve
+            CockroachDB native vector indexing, and Ollama (Llama 3.1 / Qwen2.5) reasoning to solve
             the growing water footprint of high-density AI data centers.
           </motion.p>
         </div>

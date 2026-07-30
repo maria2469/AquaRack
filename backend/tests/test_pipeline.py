@@ -7,7 +7,7 @@ aquamind_phase1.db.
 import os
 
 os.environ["DATABASE_URL"] = "sqlite:///./test_aquamind.db"
-os.environ["BEDROCK_ENABLED"] = "false"
+os.environ["OLLAMA_ENABLED"] = "false"
 
 import pytest
 from fastapi.testclient import TestClient
@@ -25,7 +25,10 @@ def _cleanup():
     yield
     for f in ("test_aquamind.db",):
         if os.path.exists(f):
-            os.remove(f)
+            try:
+                os.remove(f)
+            except Exception:
+                pass
 
 
 def test_health():

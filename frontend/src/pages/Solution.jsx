@@ -49,7 +49,7 @@ const stages = [
 
 const principles = [
   "Unified data contracts, standardized API shapes, and distributed database schemas engineered for seamless scale.",
-  "Zero mandatory cloud dependency: SQLite fallback, mockable Bedrock calls, single-node CockroachDB free tier.",
+  "Zero mandatory cloud dependency: SQLite fallback, local Ollama daemon or fallback rules, single-node CockroachDB free tier.",
   "Every recommendation is explainable — it stores exactly which memories it was grounded in.",
   "Model outputs are sanity-checked against published industry WUE benchmarks (0.5–2.0 L/kWh) as an automated test.",
 ];

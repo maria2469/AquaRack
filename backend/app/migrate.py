@@ -27,18 +27,23 @@ from app import models_ext  # noqa: F401
 
 
 def _add_column_if_missing(table: str, column: str, coltype: str = "VARCHAR") -> None:
-    inspector = inspect(engine)
-    if table not in inspector.get_table_names():
-        return  # table doesn't exist yet — create_all() will create it with the column already present
-    existing = {c["name"] for c in inspector.get_columns(table)}
-    if column in existing:
-        return
-    with engine.begin() as conn:
-        conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}"))
+    from app import database
+    try:
+        inspector = inspect(database.engine)
+        if table not in inspector.get_table_names():
+            return
+        existing = {c["name"] for c in inspector.get_columns(table)}
+        if column in existing:
+            return
+        with database.engine.begin() as conn:
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}"))
+    except Exception as exc:
+        pass
 
 
 def run_migrations() -> None:
-    Base.metadata.create_all(bind=engine)
+    from app import database
+    database.init_db()
     _add_column_if_missing("racks", "site_id", "VARCHAR")
     _add_column_if_missing("telemetry", "site_id", "VARCHAR")
     _add_column_if_missing("telemetry", "gpu_temp", "FLOAT")

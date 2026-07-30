@@ -3,15 +3,12 @@ Water & Cooling Agent (SDD Phase 2, Section 6.1): "Reasons over the Water
 Model's thermodynamic output (this is the Phase 1 single-agent logic,
 promoted to a peer agent)."
 
-Migration approach (Section 3.2): "Wrap existing call as the 'Water &
-Cooling Agent'; add peers." This module does exactly that — it calls the
-same app.agent.rules_fallback / app.agent.langchain_bedrock logic Phase 1
-uses, unchanged, with each step pushed to the real-time reasoning log.
+Calls app.agents.langchain_ollama (Llama 3.1 / Qwen2.5) when OLLAMA_ENABLED=true,
+falling back gracefully to deterministic rules_fallback on any error.
 """
 from typing import Dict
 
-  # noqa: F401
-from app.agents import langchain_bedrock, rules_fallback
+from app.agents import langchain_ollama, rules_fallback
 from app.config import settings
 from app.observability import reasoning_logger as rl
 
@@ -37,16 +34,15 @@ class WaterCoolingAgent:
             },
         )
 
-        if settings.BEDROCK_ENABLED:
+        if settings.OLLAMA_ENABLED:
             try:
-                result = langchain_bedrock.invoke_langchain(
+                result = langchain_ollama.invoke_langchain_ollama(
                     run_id, twin_state_obj.model_dump(), water_out, memories, open_incidents, self.name
                 )
                 result["agent"] = self.name
                 return result
             except Exception as exc:
-                rl.log_error(run_id, self.name, f"Bedrock/LangChain call failed, falling back to rules: {exc}")
-                # fall through to the deterministic rules fallback (FR-1.11 carried into Phase 2)
+                rl.log_error(run_id, self.name, f"Ollama/LangChain call failed, falling back to rules: {exc}")
 
         rl.log_step(run_id, self.name, "reasoning", {"note": "Using deterministic rules_fallback agent"})
         result = rules_fallback.generate_recommendation(twin_state_obj, water_out, memories)

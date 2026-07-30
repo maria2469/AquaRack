@@ -1,0 +1,13 @@
+{
+  "dataset": "test_dataset",
+  "data": [
+    {
+      "id": 1,
+      "value": "test"
+    },
+    {
+      "id": 2,
+      "value": "dataset"
+    }
+  ]
+}

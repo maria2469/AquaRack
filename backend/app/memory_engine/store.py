@@ -1,23 +1,29 @@
 """
-Memory Engine — Stage 3 (store & index) and Stage 4 (retrieve), SDD Section
-11.3/11.4 / Tech Stack ("CockroachDB Vector Index").
+Memory Engine — Stage 3 (store & index) and Stage 4 (retrieve)
 
-Runs against CockroachDB in production (or SQLite for local/offline dev,
-via DATABASE_URL). On CockroachDB, similarity search uses a real native
-VECTOR column + the `<=>` cosine-distance SQL operator (see
-app.memory_engine.vector_index) so search happens in the database, not in
-a Python-side loop. On SQLite, the same call transparently falls back to
-an in-Python cosine-similarity scan — same schema, same call sites, per
-SDD Section 4.4/9.
+Uses CockroachDB native VECTOR search when available and automatically
+falls back to Python cosine similarity on SQLite or if native VECTOR
+search is unavailable.
+
+The fallback is transaction-safe: if a CockroachDB query fails, the
+session is rolled back before continuing so subsequent ORM queries do
+not fail with:
+
+    current transaction is aborted
 """
-from typing import List
+
+from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
 from app import models
-from app.memory_engine.embed import embed_text, cosine_similarity
+from app.memory_engine.embed import cosine_similarity, embed_text
 from app.memory_engine import vector_index
 
+
+# ------------------------------------------------------------------
+# Store conversational memory
+# ------------------------------------------------------------------
 
 def store_memory(
     db: Session,
@@ -25,77 +31,150 @@ def store_memory(
     mem_type: str,
     summary_text: str,
 ) -> models.Memory:
+
     memory = models.Memory(
         conversation_id=conversation_id,
         type=mem_type,
         summary_text=summary_text,
         tier="hot",
     )
+
     db.add(memory)
-    db.flush()  # get memory_id without committing yet
+    db.flush()
+
     vector, model_name = embed_text(summary_text)
+
     embedding = models.Embedding(
         memory_id=memory.memory_id,
         vector=vector,
         model_name=model_name,
     )
+
     db.add(embedding)
+
     db.commit()
+
     db.refresh(memory)
     db.refresh(embedding)
 
-    # Mirror into CockroachDB's native VECTOR column for real in-DB search
-    # (no-op on SQLite).
-    vector_index.sync_native_vector(db, embedding.embedding_id, vector)
+    # Sync CockroachDB native VECTOR column (optional)
+    try:
+        vector_index.sync_native_vector(
+            db,
+            embedding.embedding_id,
+            vector,
+        )
+    except Exception:
+        db.rollback()
 
     return memory
 
 
+# ------------------------------------------------------------------
+# Default conversation
+# ------------------------------------------------------------------
+
 def get_or_create_default_conversation(db: Session) -> str:
+
     convo = db.query(models.Conversation).first()
+
     if convo:
         return convo.conversation_id
-    convo = models.Conversation(user_id="system", channel="agent")
+
+    convo = models.Conversation(
+        user_id="system",
+        channel="agent",
+    )
+
     db.add(convo)
     db.commit()
     db.refresh(convo)
+
     return convo.conversation_id
 
 
-def search_memories(db: Session, query_text: str, k: int = 5) -> List[dict]:
-    query_vec, model_name = embed_text(query_text)
+# ------------------------------------------------------------------
+# Search conversation memories
+# ------------------------------------------------------------------
 
-    # Prefer a real in-database vector search (CockroachDB `<=>` operator).
-    native_results = vector_index.native_search(db, query_vec, model_name, k=k)
-    if native_results is not None:
-        return native_results
+def search_memories(
+    db: Session,
+    query_text: str,
+    k: int = 5,
+) -> List[dict]:
 
-    # Fallback: Python-side cosine-similarity scan (SQLite / no native
-    # vector column yet / cluster doesn't support VECTOR).
+    query_vector, model_name = embed_text(query_text)
+
+    # -------------------------
+    # Native VECTOR search
+    # -------------------------
+    try:
+
+        native = vector_index.native_search(
+            db,
+            query_vector,
+            model_name,
+            k=k,
+        )
+
+        if native is not None:
+            return native
+
+    except Exception as exc:
+
+        print(f"Native memory search failed: {exc}")
+        db.rollback()
+
+    db.rollback()
+
+    # -------------------------
+    # Python fallback
+    # -------------------------
+
     rows = (
         db.query(models.Memory, models.Embedding)
-        .join(models.Embedding, models.Embedding.memory_id == models.Memory.memory_id)
-        .filter(models.Embedding.model_name == model_name)
+        .join(
+            models.Embedding,
+            models.Embedding.memory_id == models.Memory.memory_id,
+        )
+        .filter(
+            models.Embedding.model_name == model_name
+        )
         .all()
     )
+
     scored = []
+
     for memory, embedding in rows:
-        sim = cosine_similarity(query_vec, embedding.vector)
-        scored.append((sim, memory))
-    scored.sort(key=lambda x: x[0], reverse=True)
-    top = scored[:k]
+
+        score = cosine_similarity(
+            query_vector,
+            embedding.vector,
+        )
+
+        scored.append((score, memory))
+
+    scored.sort(
+        key=lambda x: x[0],
+        reverse=True,
+    )
+
     return [
         {
-            "memory_id": m.memory_id,
-            "type": m.type,
-            "summary_text": m.summary_text,
-            "tier": m.tier,
-            "created_at": m.created_at,
-            "similarity": round(sim, 4),
+            "memory_id": memory.memory_id,
+            "type": memory.type,
+            "summary_text": memory.summary_text,
+            "tier": memory.tier,
+            "created_at": memory.created_at,
+            "similarity": round(score, 4),
         }
-        for sim, m in top
+        for score, memory in scored[:k]
     ]
 
+
+# ------------------------------------------------------------------
+# Store Enterprise Memory
+# ------------------------------------------------------------------
 
 def store_memory_embedding(
     db: Session,
@@ -103,53 +182,124 @@ def store_memory_embedding(
     source_id: str,
     summary: str,
 ) -> models.MemoryEmbedding:
-    """Store an enterprise vector embedding in memory_embeddings table."""
+
     vector, _ = embed_text(summary)
-    mem_emb = models.MemoryEmbedding(
+
+    mem = models.MemoryEmbedding(
         memory_type=memory_type,
         source_id=source_id,
         embedding=vector,
         summary=summary,
     )
-    db.add(mem_emb)
-    db.commit()
-    db.refresh(mem_emb)
-    vector_index.sync_native_vector(db, mem_emb.id, vector, table_name="memory_embeddings", id_column="id")
-    return mem_emb
 
+    db.add(mem)
+    db.commit()
+    db.refresh(mem)
+
+    # Sync native VECTOR column (optional)
+    try:
+
+        vector_index.sync_native_vector(
+            db=db,
+            row_id=mem.id,
+            vector=vector,
+        )
+
+    except Exception:
+
+        db.rollback()
+
+    return mem
+
+
+# ------------------------------------------------------------------
+# Search Enterprise Memory
+# ------------------------------------------------------------------
 
 def search_memory_embeddings(
     db: Session,
     query_text: str,
-    memory_type: str = None,
+    memory_type: Optional[str] = None,
     k: int = 5,
 ) -> List[dict]:
-    """Search memory_embeddings table semantically using CockroachDB vector index or fallback cosine similarity."""
-    query_vec, _ = embed_text(query_text)
-    native_res = vector_index.native_search_memory_embeddings(db, query_vec, memory_type=memory_type, k=k)
-    if native_res is not None:
-        return native_res
+    """
+    Search memory_embeddings.
 
-    # Python fallback scan
-    q = db.query(models.MemoryEmbedding)
+    Order of execution:
+
+        1. CockroachDB native VECTOR search
+
+        2. Python cosine similarity fallback
+    """
+
+    query_vector, _ = embed_text(query_text)
+
+    # ---------------------------------------------------
+    # Native CockroachDB VECTOR search
+    # ---------------------------------------------------
+
+    try:
+
+        native = vector_index.native_search_memory_embeddings(
+            db=db,
+            query_vector=query_vector,
+            memory_type=memory_type,
+            k=k,
+        )
+
+        if native is not None:
+            return native
+
+    except Exception as exc:
+
+        print(f"Native vector search failed: {exc}")
+
+        db.rollback()
+
+    # Important:
+    # If CockroachDB produced any SQL error,
+    # rollback before running ORM queries.
+
+    db.rollback()
+
+    # ---------------------------------------------------
+    # Python cosine similarity fallback
+    # ---------------------------------------------------
+
+    query = db.query(models.MemoryEmbedding)
+
     if memory_type:
-        q = q.filter(models.MemoryEmbedding.memory_type == memory_type)
-    rows = q.all()
+
+        query = query.filter(
+            models.MemoryEmbedding.memory_type == memory_type
+        )
+
+    rows = query.all()
+
     scored = []
-    for r in rows:
-        sim = cosine_similarity(query_vec, r.embedding)
-        scored.append((sim, r))
-    scored.sort(key=lambda x: x[0], reverse=True)
-    top = scored[:k]
+
+    for row in rows:
+
+        score = cosine_similarity(
+            query_vector,
+            row.embedding,
+        )
+
+        scored.append((score, row))
+
+    scored.sort(
+        key=lambda x: x[0],
+        reverse=True,
+    )
+
     return [
         {
-            "id": r.id,
-            "memory_type": r.memory_type,
-            "source_id": r.source_id,
-            "summary": r.summary,
-            "created_at": r.created_at,
-            "similarity": round(sim, 4),
+            "id": row.id,
+            "memory_type": row.memory_type,
+            "source_id": row.source_id,
+            "summary": row.summary,
+            "created_at": row.created_at,
+            "similarity": round(score, 4),
         }
-        for sim, r in top
+        for score, row in scored[:k]
     ]
-

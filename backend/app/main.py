@@ -54,8 +54,8 @@ app = FastAPI(
     description=(
         "Digital twin of an AI data centre: telemetry ingestion, digital "
         "twin/simulation, water & cooling model, RAG memory engine, and a "
-        "multi-agent AI decision system over CockroachDB and Amazon "
-        "Bedrock (via LangChain)."
+        "multi-agent AI decision system over CockroachDB Managed MCP, CockroachDB "
+        "Vector Indexing, and Ollama (Llama 3.1 / Qwen2.5)."
     ),
 )
 
@@ -107,8 +107,8 @@ def on_startup():
     run_migrations()
     from app.database import IS_COCKROACHDB
     logger.info(
-        "AquaRack started. DB=%s (CockroachDB=%s) Bedrock/LangChain enabled=%s",
-        settings.DATABASE_URL, IS_COCKROACHDB, settings.BEDROCK_ENABLED,
+        "AquaRack started. DB=%s (CockroachDB=%s) Ollama enabled=%s (model=%s)",
+        settings.DATABASE_URL, IS_COCKROACHDB, settings.OLLAMA_ENABLED, settings.OLLAMA_MODEL,
     )
 
 

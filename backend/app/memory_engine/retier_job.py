@@ -18,8 +18,6 @@ the rest of the tiering logic.
 Usage (from the repo root, with phase1_standalone importable):
     PYTHONPATH=phase1_standalone:. python -m phase2_distributed.memory_tiering.retier_job
 """
-import json
-import os
 from datetime import datetime, timedelta
 
   # noqa: F401
@@ -27,31 +25,24 @@ from app import models
 from app.database import SessionLocal
 
 from app.models_ext import CDCExportLog
+from app.lib.s3_client import export_cold_memory
 
 HOT_WINDOW = timedelta(hours=24)
 WARM_WINDOW = timedelta(days=90)
-S3_LAKE_DIR = os.environ.get("AQUAMIND_S3_LAKE_DIR", "./s3_lake")
 
 
 def _export_to_lake(memory: models.Memory, now: datetime) -> str:
-    """Writes a local JSON stand-in for the S3 cold-tier export and returns
-    the (simulated) s3:// URI recorded in cdc_export_log."""
-    os.makedirs(S3_LAKE_DIR, exist_ok=True)
-    key = f"cold_{memory.memory_id}.json"
-    path = os.path.join(S3_LAKE_DIR, key)
-    with open(path, "w") as f:
-        json.dump(
-            {
-                "memory_id": memory.memory_id,
-                "type": memory.type,
-                "summary_text": memory.summary_text,
-                "created_at": memory.created_at.isoformat(),
-                "exported_at": now.isoformat(),
-            },
-            f,
-            indent=2,
-        )
-    return f"s3://aquamind-cold-tier/cold/{key}"
+    """Exports the cold-tier memory to real S3 (when S3_ENABLED=true and
+    boto3/credentials are available) or a local JSON fallback otherwise,
+    and returns the s3:// URI recorded in cdc_export_log. See
+    app.lib.s3_client for the dual-mode implementation."""
+    return export_cold_memory(
+        memory_id=memory.memory_id,
+        mem_type=memory.type,
+        summary_text=memory.summary_text,
+        created_at=memory.created_at,
+        now=now,
+    )
 
 
 def retier_memories(db=None, now=None) -> dict:

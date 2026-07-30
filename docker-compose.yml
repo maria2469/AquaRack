@@ -26,11 +26,12 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=cockroachdb://root@cockroachdb:26257/aquamind?sslmode=disable
-      - BEDROCK_ENABLED=${BEDROCK_ENABLED:-true}
-      - AWS_REGION=${AWS_REGION:-us-east-1}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
-      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
+      - OLLAMA_ENABLED=${OLLAMA_ENABLED:-true}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.1}
+      - OLLAMA_EMBED_MODEL=${OLLAMA_EMBED_MODEL:-nomic-embed-text}
+      - S3_ENABLED=${S3_ENABLED:-false}
+      - CLOUDWATCH_ENABLED=${CLOUDWATCH_ENABLED:-false}
     depends_on:
       - cockroachdb
 

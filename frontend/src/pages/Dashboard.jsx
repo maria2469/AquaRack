@@ -125,7 +125,7 @@ export default function Dashboard() {
               <h1 className="font-heading text-3xl md:text-4xl font-semibold text-frost mt-1.5">
                 AquaRack Enterprise Dashboard
               </h1>
-              <p className="text-sm text-mist mt-1">CockroachDB Managed MCP Server + Amazon Bedrock Agentic Memory</p>
+              <p className="text-sm text-mist mt-1">CockroachDB Managed MCP Server + Ollama Agentic Memory</p>
             </div>
             <div className="flex items-center gap-3 flex-wrap">
               <ConnectionBadge status={status} />
@@ -135,7 +135,7 @@ export default function Dashboard() {
                 className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-coolant via-flow to-signal hover:brightness-110 disabled:opacity-60 px-4 py-2 text-xs font-semibold text-abyss transition-all shadow-lg"
               >
                 {reasonLoading ? <RefreshCw size={13} className="animate-spin" /> : <BrainCircuit size={13} />}
-                Run Bedrock Reasoning Loop
+                Run Ollama Reasoning Loop
               </button>
             </div>
           </div>

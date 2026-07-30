@@ -1,0 +1,22 @@
+timestamp,device_id,cpu_pct,gpu_pct,ram_pct,cooling_load_kw,wue_factor,water_l_per_hr,recommendation,confidence
+2026-07-30T20:26:34.022525,rack-01-primary,42.5,68.0,52.0,2.3683,0.756,0.9438,Utilisation is nominal at 52.05%. No cooling intervention needed; current water usage effectiveness is 0.756 L/kWh at 0.9438 L/hr. Capacity headroom is healthy (47.95%); no near-term expansion required.,0.4
+2026-07-30T20:26:34.173047,edge-01,40.0,,35.0,,,,,
+2026-07-30T20:26:34.173143,edge-02,55.0,,50.0,,,,,
+2026-07-30T20:26:34.247810,opendc-rack-1-05d796,78.61879835944806,,63.357298135460034,21.5605,0.756,8.5923,,
+2026-07-30T20:26:34.272895,opendc-rack-1-05d796,24.061628620787467,,17.027853190713518,6.3923,0.756,2.5475,,
+2026-07-30T20:26:34.295479,opendc-rack-1-05d796,19.75540876675787,,15.14115739325908,5.3497,0.756,2.132,,
+2026-07-30T20:26:34.331404,opendc-rack-2-05d796,70.19351733227435,,57.46152550651469,19.3281,0.756,7.7026,,
+2026-07-30T20:26:34.354936,opendc-rack-2-05d796,23.765902205253145,,20.222141899844104,6.6111,0.756,2.6346,,
+2026-07-30T20:26:34.377417,opendc-rack-2-05d796,19.548510308790426,,17.716225437539457,5.5324,0.756,2.2048,,
+2026-07-30T20:26:34.733192,test-laptop,93.0,,88.0,4.1632,0.756,1.6591,Utilisation is critical at 91.5%. Recommend immediately shedding non-essential workload or increasing airflow/cooling capacity; cooling load is 4.1632kW with an estimated water draw of 1.6591 L/hr. This aligns with 2 similar past reading(s) in memory (top similarity 0.85). Capacity headroom is only 8.5% at current load; recommend planning additional rack capacity (or an OpenDC what-if simulation at a higher workload profile) within the current planning cycle. Utilisation spike detected (91.5%) — likely anomalous burst load.,0.68
+2026-07-30T20:26:49.461871,test-laptop,98.0,95.0,90.0,4.3452,0.756,1.7317,Utilisation is critical at 95.5%. Recommend immediately shedding non-essential workload or increasing airflow/cooling capacity; cooling load is 4.3452kW with an estimated water draw of 1.7317 L/hr. This aligns with 2 similar past reading(s) in memory (top similarity 0.1826). Capacity headroom is only 4.5% at current load; recommend planning additional rack capacity (or an OpenDC what-if simulation at a higher workload profile) within the current planning cycle. Utilisation spike detected (95.5%) — likely anomalous burst load.,0.68
+2026-07-30T20:28:31.293167,edge-01,40.0,,35.0,,,,,
+2026-07-30T20:28:31.293302,edge-02,55.0,,50.0,,,,,
+2026-07-30T20:28:31.416527,opendc-rack-1-103f36,73.2480003013395,,59.34762024218891,20.1155,0.756,8.0164,,
+2026-07-30T20:28:31.467481,opendc-rack-1-103f36,24.470574806398247,,17.299425940429668,6.4994,0.756,2.5901,,
+2026-07-30T20:28:31.517112,opendc-rack-1-103f36,20.959248728274808,,17.249544361153166,5.7792,0.756,2.3031,,
+2026-07-30T20:28:31.600793,opendc-rack-2-103f36,78.13427747379487,,64.03621810075745,21.5211,0.756,8.5766,,
+2026-07-30T20:28:31.659248,opendc-rack-2-103f36,15.399172612341474,,13.5682285751039,4.3243,0.756,1.7233,,
+2026-07-30T20:28:31.708205,opendc-rack-2-103f36,22.03339562145299,,16.60993562279346,5.9423,0.756,2.3681,,
+2026-07-30T20:28:31.858454,test-laptop,93.0,,88.0,4.1632,0.756,1.6591,Utilisation is critical at 91.5%. Recommend immediately shedding non-essential workload or increasing airflow/cooling capacity; cooling load is 4.1632kW with an estimated water draw of 1.6591 L/hr. This aligns with 4 similar past reading(s) in memory (top similarity 0.1826). Capacity headroom is only 8.5% at current load; recommend planning additional rack capacity (or an OpenDC what-if simulation at a higher workload profile) within the current planning cycle. Utilisation spike detected (91.5%) — likely anomalous burst load.,0.68
+2026-07-30T20:28:32.113091,test-laptop,98.0,95.0,90.0,4.3452,0.756,1.7317,Utilisation is critical at 95.5%. Recommend immediately shedding non-essential workload or increasing airflow/cooling capacity; cooling load is 4.3452kW with an estimated water draw of 1.7317 L/hr. This aligns with 5 similar past reading(s) in memory (top similarity 0.1826). Capacity headroom is only 4.5% at current load; recommend planning additional rack capacity (or an OpenDC what-if simulation at a higher workload profile) within the current planning cycle. Utilisation spike detected (95.5%) — likely anomalous burst load.,0.88

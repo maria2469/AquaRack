@@ -70,9 +70,10 @@ def run_recommendation(db: Session, twin_state, water_out: dict, open_incidents:
     memories = query_memory(db, query_text, k=5)
     rl.log_step(run_id, "memory_rag", "decision", {"retrieved_count": len(memories)})
 
-    if settings.BEDROCK_ENABLED:
+    if settings.OLLAMA_ENABLED:
         try:
-            result = langchain_bedrock.invoke_langchain(
+            from app.agents import langchain_ollama
+            result = langchain_ollama.invoke_langchain_ollama(
                 run_id, twin_state.model_dump(), water_out, memories, open_incidents, agent_name
             )
             rl.log_decision(
@@ -82,8 +83,7 @@ def run_recommendation(db: Session, twin_state, water_out: dict, open_incidents:
             result["run_id"] = run_id
             return result
         except Exception as exc:
-            rl.log_error(run_id, agent_name, f"Bedrock/LangChain call failed, falling back to rules: {exc}")
-            # fall through to rules-based fallback (FR-1.11)
+            rl.log_error(run_id, agent_name, f"Ollama/LangChain call failed, falling back to rules: {exc}")
 
     rl.log_step(run_id, agent_name, "reasoning", {"note": "Using deterministic rules_fallback agent"})
     result = rules_fallback.generate_recommendation(twin_state, water_out, memories)

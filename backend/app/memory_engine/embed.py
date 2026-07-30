@@ -12,7 +12,7 @@ import math
 import re
 import time
 import logging
-from typing import List, Dict
+from typing import List, Dict, Optional
 from functools import lru_cache
 
 from app.config import settings
@@ -52,38 +52,25 @@ def _local_embed(text: str, dim: int = LOCAL_EMBED_DIM) -> List[float]:
     return [v / norm for v in vec]
 
 
-def _bedrock_embed(text: str) -> List[float]:
-    """Real Titan embedding via LangChain's BedrockEmbeddings wrapper (SDD
-    Tech Stack: LangChain + Amazon Bedrock)."""
-    from app.agents.langchain_bedrock import embed_text_langchain
-    from botocore.exceptions import ClientError
+def _ollama_embed(text: str) -> Optional[List[float]]:
+    """Ollama vector embedding via LangChain OllamaEmbeddings wrapper."""
+    from app.agents.langchain_ollama import embed_text_ollama
 
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            return embed_text_langchain(text)
-        except ClientError as e:
-            if e.response.get("Error", {}).get("Code") == "ThrottlingException":
-                if attempt < max_retries - 1:
-                    wait = 2 ** attempt
-                    logger.warning(f"Bedrock throttled, retrying in {wait}s...")
-                    time.sleep(wait)
-                    continue
-            raise
-    raise RuntimeError("LangChain BedrockEmbeddings failed after retries")
+    return embed_text_ollama(text)
 
 
 def embed_text(text: str):
     """Returns (vector, model_name_used). Falls back to local embedding on any error."""
-    if settings.BEDROCK_ENABLED:
+    if settings.OLLAMA_ENABLED:
         if text in _embedding_cache:
-            return _embedding_cache[text], settings.BEDROCK_EMBED_MODEL_ID
+            return _embedding_cache[text], settings.OLLAMA_EMBED_MODEL
         try:
-            vector = _bedrock_embed(text)
-            _embedding_cache[text] = vector
-            return vector, settings.BEDROCK_EMBED_MODEL_ID
+            vector = _ollama_embed(text)
+            if vector:
+                _embedding_cache[text] = vector
+                return vector, settings.OLLAMA_EMBED_MODEL
         except Exception as e:
-            logger.error(f"Bedrock embedding failed: {e}. Falling back to local.")
+            logger.error(f"Ollama embedding failed: {e}. Falling back to local.")
             pass
     return _local_embed(text), LOCAL_MODEL_NAME
 

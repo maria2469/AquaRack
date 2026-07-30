@@ -8,7 +8,7 @@ import os
 import time
 
 os.environ["DATABASE_URL"] = "sqlite:///./test_aquamind_multi_agent.db"
-os.environ["BEDROCK_ENABLED"] = "false"
+os.environ["OLLAMA_ENABLED"] = "false"
 
 import pytest
 from fastapi.testclient import TestClient

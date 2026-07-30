@@ -4,23 +4,29 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://reactjs.org/)
 [![CockroachDB](https://img.shields.io/badge/CockroachDB-6933FF?style=for-the-badge&logo=cockroachlabs&logoColor=white)](https://www.cockroachlabs.com/)
-[![Amazon Bedrock](https://img.shields.io/badge/Amazon_Bedrock-FF9900?style=for-the-badge&logo=amazonaws&logoColor=white)](https://aws.amazon.com/bedrock/)
-[![LangChain](https://img.shields.io/badge/LangChain-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white)](https://www.langchain.com/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
+[![Ollama](https://img.shields.io/badge/Ollama-Llama_3.1-000000?style=for-the-badge&logo=ollama&logoColor=white)](https://ollama.ai/)
+[![Amazon_S3](https://img.shields.io/badge/Amazon_S3-569A31?style=for-the-badge&logo=amazons3&logoColor=white)](https://aws.amazon.com/s3/)
+[![AWS_Lambda](https://img.shields.io/badge/AWS_Lambda-FF9900?style=for-the-badge&logo=awslambda&logoColor=white)](https://aws.amazon.com/lambda/)
+[![CloudWatch](https://img.shields.io/badge/CloudWatch-FF4F8B?style=for-the-badge&logo=amazoncloudwatch&logoColor=white)](https://aws.amazon.com/cloudwatch/)
 
 > **AquaRack** is an enterprise-grade Agentic Digital Twin platform designed to forecast thermal load, optimize cooling demand, and dramatically reduce cooling-water consumption (WUE) in high-density AI data centers.
 
 ---
 
-## 🏆 CockroachDB × AWS Hackathon Submission Checklist
+## 🏆 Enterprise Technology Stack & Features Checklist
 
-### 1. CockroachDB Tools Used (Min. 2 Required — Used 2)
-- 🔌 **CockroachDB Cloud Managed MCP Server (`https://cockroachlabs.cloud/mcp`)**: Connects AI agents directly to CockroachDB clusters with zero raw-SQL queries. Exposes high-level tools (`retrieve_similar_incidents`, `retrieve_previous_recommendations`, `store_agent_memory`). Implemented in `app/mcp/server.py` & `app/mcp/tools.py`.
-- 🧠 **CockroachDB Distributed Vector Indexing**: Stores Titan 384-dimensional embeddings in CockroachDB and executes in-database similarity search via native `<=>` cosine-distance operators. Implemented in `app/memory_engine/vector_index.py`.
+### 1. Primary AI Reasoning & Embeddings
+- 🦙 **Ollama (Llama 3.1 / Qwen2.5)**: Primary local/remote LLM agent reasoning engine powering the LangChain `ChatOllama` structured output reasoning chain (`RecommendationOutput`), outputting actionable cooling decisions with confidence scores and cited memory IDs.
+- 📐 **Ollama Embeddings (`nomic-embed-text` / `llama3.1`)**: Generates real-time vector embeddings for telemetry events and memory retrieval with offline hashed bag-of-words fallback (FR-1.11).
 
-### 2. AWS Services Used (Min. 1 Required — Used 2)
-- 🤖 **Amazon Bedrock Reasoning (`us.anthropic.claude-sonnet-5`)**: Powers the LangChain `ChatBedrockConverse` structured output reasoning chain (`RecommendationOutput`), outputting actionable cooling decisions with confidence scores and cited memory IDs. Near-instant responses, 1M context window, and native agentic tool use. Configurable to `us.anthropic.claude-opus-5` via `BEDROCK_TEXT_MODEL_ID` for maximum reasoning depth.
-- 📐 **Amazon Bedrock Titan Embeddings (`us.amazon.titan-embed-text-v2:0`)**: Generates real-time vector embeddings for telemetry events and memory retrieval.
+### 2. CockroachDB Distributed Storage & MCP
+- 🔌 **CockroachDB Managed MCP Server**: Connects AI agents directly to CockroachDB clusters via JSON-RPC 2.0 (`/mcp/rpc`) with tools (`retrieve_similar_incidents`, `retrieve_previous_recommendations`, `store_agent_memory`, `retrieve_water_saving_history`, `retrieve_high_gpu_events`). Implemented in `app/mcp/server.py` & `app/mcp/tools.py`.
+- 🧠 **CockroachDB Distributed Vector Indexing**: Stores vector embeddings in CockroachDB and executes in-database similarity search via native `<=>` cosine-distance operators. Implemented in `app/memory_engine/vector_index.py`.
+
+### 3. Cloud & Observability Stack
+- 📦 **Amazon S3 Cold Storage**: Exports archived cold-tier memories (`s3://<bucket>/<prefix>/...`) via CDC export jobs. Implemented in `app/lib/s3_client.py`.
+- ⚡ **AWS Lambda Serverless Retiering**: Serverless entry point function (`handler` in `app/lambda_handler.py`) running scheduled memory re-tiering (hot -> warm -> cold).
+- 👁️ **CloudWatch Observability**: Ships live structured reasoning traces to AWS CloudWatch Log Groups (`/aquamind/reasoning`). Implemented in `app/observability/reasoning_logger.py`.
 
 ### 3. Open Source & License Compliance
 - 📄 **License**: Open Source under the **MIT License** (see [LICENSE](file:///d:/Projects/RackPulse/LICENSE)).
