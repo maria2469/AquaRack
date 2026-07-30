@@ -1,5 +1,5 @@
 """
-Enterprise FastAPI Endpoints for RackPulse.
+Enterprise FastAPI Endpoints for AquaMind AI.
 
 Provides production-ready APIs:
   GET  /api/telemetry/latest

@@ -62,7 +62,7 @@ export default function Home() {
                 New
               </span>
               <span className="text-sm font-body text-white/90">
-                Phase 1 — live demo ready, laptop to fleet
+                Enterprise-ready AI Data Center Digital Twin
               </span>
             </motion.div>
 
@@ -78,7 +78,7 @@ export default function Home() {
               transition={{ duration: 0.8, ease: "easeOut", delay: 0.8 }}
               className="mt-4 text-sm md:text-base text-white max-w-2xl font-body font-light leading-tight"
             >
-              AquaMind AI is a digital-twin platform that watches your infrastructure think, feels
+              AquaRack is a digital-twin platform that watches your infrastructure think, feels
               the heat it gives off, and reasons — with memory — about the cooling and water cost
               of every decision, before you make it.
             </motion.p>
@@ -134,7 +134,7 @@ export default function Home() {
             className="flex flex-col items-center gap-4 pb-8"
           >
             <div className="liquid-glass rounded-full px-4 py-1.5 text-xs font-body text-white/70">
-              Same schemas, same reasoning loop — laptop-scale today, fleet-scale tomorrow
+              Unified telemetry & reasoning loop — scalable from edge nodes to global data centers
             </div>
             <div className="flex gap-12 md:gap-16">
               {["Compute", "Cooling", "Water", "Memory", "Agent"].map((w) => (

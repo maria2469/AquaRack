@@ -48,7 +48,7 @@ const stages = [
 ];
 
 const principles = [
-  "Same data contracts, same API shapes, same database schema across Phase 1 and Phase 2 — nothing gets rewritten to scale up.",
+  "Unified data contracts, standardized API shapes, and distributed database schemas engineered for seamless scale.",
   "Zero mandatory cloud dependency: SQLite fallback, mockable Bedrock calls, single-node CockroachDB free tier.",
   "Every recommendation is explainable — it stores exactly which memories it was grounded in.",
   "Model outputs are sanity-checked against published industry WUE benchmarks (0.5–2.0 L/kWh) as an automated test.",
@@ -107,7 +107,7 @@ export default function Solution() {
               className="text-sm sm:text-base md:text-lg leading-relaxed text-white/60 max-w-sm sm:max-w-lg mb-5 sm:mb-6"
               style={{ animation: "fadeSlideUp 0.8s ease 0.7s both" }}
             >
-              AquaMind AI connects telemetry, thermal physics, and RAG memory into a single real-time loop — forecasting water demand before compute peaks and eliminating wasted cooling.
+              AquaRack connects telemetry, thermal physics, and RAG memory into a single real-time loop — forecasting water demand before compute peaks and eliminating wasted cooling.
             </p>
             <div
               className="flex flex-wrap gap-3"
@@ -203,10 +203,9 @@ export default function Solution() {
               Built to scale without a rewrite.
             </h2>
             <p className="text-mist mt-4 leading-relaxed">
-              Phase 1 proves the full workflow on a single laptop. Phase 2 promotes
-              the exact same modules — Digital Twin, Water Model, Memory Engine,
-              AI Agent — into a distributed, multi-agent system. The schema and API
-              contracts never change.
+              AquaRack deploys identical core modules — Digital Twin, Water Model, Memory Engine,
+              AI Agent — across both edge and distributed cloud infrastructure. The schema and API
+              contracts remain completely consistent at any scale.
             </p>
           </motion.div>
 

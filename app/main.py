@@ -49,7 +49,7 @@ logging.basicConfig(
 logger = logging.getLogger("aquamind")
 
 app = FastAPI(
-    title="AquaMind AI",
+    title="AquaRack",
     version="2.0.0",
     description=(
         "Digital twin of an AI data centre: telemetry ingestion, digital "
@@ -107,7 +107,7 @@ def on_startup():
     run_migrations()
     from app.database import IS_COCKROACHDB
     logger.info(
-        "AquaMind AI started. DB=%s (CockroachDB=%s) Bedrock/LangChain enabled=%s",
+        "AquaRack started. DB=%s (CockroachDB=%s) Bedrock/LangChain enabled=%s",
         settings.DATABASE_URL, IS_COCKROACHDB, settings.BEDROCK_ENABLED,
     )
 

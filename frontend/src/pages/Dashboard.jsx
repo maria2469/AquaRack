@@ -130,7 +130,7 @@ export default function Dashboard() {
             <div>
               <span className="text-xs uppercase tracking-[0.18em] text-flow font-mono">Agentic Digital Twin</span>
               <h1 className="font-heading text-3xl md:text-4xl font-semibold text-frost mt-2">
-                RackPulse Enterprise Dashboard
+                AquaRack Enterprise Dashboard
               </h1>
               <p className="text-sm text-mist mt-1">CockroachDB Managed MCP Server + Amazon Bedrock Agentic Memory</p>
             </div>
@@ -184,7 +184,7 @@ export default function Dashboard() {
           <div className="card-glass rounded-2xl p-6">
             <div className="flex items-center justify-between mb-5">
               <h2 className="font-heading font-semibold text-frost">GPU & CPU Utilization Trend</h2>
-              <span className="font-mono text-xs text-mist">Device: {telemetry?.device_id ?? "Rack-1 (Laptop)"}</span>
+              <span className="font-mono text-xs text-mist">Device: {telemetry?.device_id ?? "Rack-01 (Primary Cluster)"}</span>
             </div>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">

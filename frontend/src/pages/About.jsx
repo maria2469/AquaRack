@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Server, Cloud, GitBranch, Cpu } from "lucide-react";
+import { Server, Cloud, GitBranch, Cpu, ShieldCheck, Zap } from "lucide-react";
 import AmbientVeil from "../components/ui/AmbientVeil";
 
 const fadeUp = {
@@ -8,24 +8,24 @@ const fadeUp = {
 };
 
 const stack = [
-  { group: "Orchestration", items: ["FastAPI", "Pydantic", "SQLAlchemy"] },
-  { group: "Data & Memory", items: ["CockroachDB", "Vector index (HNSW)", "SQLite (local buffer)"] },
-  { group: "AI Reasoning", items: ["Amazon Bedrock", "Titan Embeddings V2", "Local sentence-transformer fallback"] },
-  { group: "Frontend", items: ["React", "Tailwind CSS", "Recharts", "Three.js / R3F"] },
+  { group: "Orchestration", items: ["FastAPI", "Pydantic", "SQLAlchemy", "AsyncIO"] },
+  { group: "Data & Memory", items: ["CockroachDB", "Native Vector Index (<=>)", "SQLite local buffer"] },
+  { group: "AI Reasoning", items: ["Amazon Bedrock", "Titan Embeddings V2", "LangChain ChatBedrockConverse"] },
+  { group: "Frontend & UI", items: ["React 18", "Tailwind CSS", "Three.js / R3F Shaders", "Lucide React"] },
 ];
 
-const phases = [
+const pillars = [
   {
     icon: Server,
-    title: "Phase 1 — Standalone Laptop Digital Twin",
-    status: "Complete",
-    body: "The full workflow — telemetry, digital twin, water model, memory engine, and AI agent — running end to end on a single laptop with zero mandatory cloud dependency.",
+    title: "Edge & Node Telemetry Collector",
+    status: "Production Ready",
+    body: "Real-time daemon polling CPU, GPU, RAM, battery, and fan telemetry every 5 seconds with automatic SQLite buffer replay on network disconnects.",
   },
   {
     icon: Cloud,
-    title: "Phase 2 — Distributed / Cloud-Scale",
-    status: "Complete",
-    body: "The same modules promoted to a distributed, multi-agent system across a fleet of devices — OpenDC/CloudSim integration, multi-node CockroachDB, and a peer-agent orchestration layer.",
+    title: "Distributed Digital Twin & RAG Memory",
+    status: "Production Ready",
+    body: "Multi-rack thermal modeling, psychrometric evaporative water loss estimation, and CockroachDB native vector index search accessed via structured MCP tools.",
   },
 ];
 
@@ -39,30 +39,29 @@ export default function About() {
             variants={fadeUp} initial="hidden" animate="show"
             className="inline-flex items-center gap-2 rounded-full border border-rack-2 bg-hall-2 px-3.5 py-1.5 text-xs font-mono text-flow-2 mb-6"
           >
-            <GitBranch size={12} /> ABOUT THE PROJECT
+            <GitBranch size={12} /> ABOUT THE PLATFORM
           </motion.span>
           <motion.h1
             variants={fadeUp} initial="hidden" animate="show" custom={1}
             className="font-heading text-4xl md:text-5xl font-semibold text-frost leading-tight max-w-3xl"
           >
-            A digital twin, built in two phases,
-            <span className="text-gradient-coolant"> on one architecture.</span>
+            An Agentic Digital Twin,
+            <span className="text-gradient-coolant"> engineered for real-world impact.</span>
           </motion.h1>
           <motion.p
             variants={fadeUp} initial="hidden" animate="show" custom={2}
             className="mt-6 text-lg text-mist leading-relaxed max-w-2xl"
           >
-            AquaMind AI's Software Design Document specifies the same data
-            contracts, API shapes, and database schema across both phases —
-            so scaling from a laptop to a fleet is a matter of configuration
-            and deployment topology, not a rewrite.
+            AquaRack combines live hardware telemetry, thermodynamic water modeling,
+            CockroachDB native vector indexing, and Amazon Bedrock reasoning to solve
+            the growing water footprint of high-density AI data centers.
           </motion.p>
         </div>
       </section>
 
       <section className="py-20">
         <div className="max-w-5xl mx-auto px-5 md:px-8 space-y-5">
-          {phases.map((p, i) => (
+          {pillars.map((p, i) => (
             <motion.div
               key={p.title}
               variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }} custom={i}

@@ -19,9 +19,10 @@ export default function Navbar() {
       <nav className="max-w-7xl mx-auto flex items-center justify-between">
         <NavLink
           to="/"
-          className="liquid-glass flex h-12 w-12 items-center justify-center rounded-full shrink-0"
+          className="liquid-glass flex h-12 items-center gap-2.5 rounded-full px-4 shrink-0"
         >
           <Droplets size={18} className="text-white" strokeWidth={2.2} />
+          <span className="font-heading font-semibold text-base text-white tracking-tight">AquaRack</span>
         </NavLink>
 
         <div className="hidden md:flex items-center gap-1 liquid-glass rounded-full px-1.5 py-1.5">

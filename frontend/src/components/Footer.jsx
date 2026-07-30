@@ -47,7 +47,7 @@ export default function Footer() {
       </div>
       <div className="border-t border-white/10">
         <div className="max-w-7xl mx-auto px-5 md:px-8 py-5 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs font-body text-white/50">
-          <span>© {new Date().getFullYear()} AquaMind AI. Phase 1 — Standalone Digital Twin.</span>
+          <span>© {new Date().getFullYear()} AquaRack. Agentic Digital Twin Platform.</span>
           <span className="font-mono">v1.0.0 · SDD Draft for Engineering Review</span>
         </div>
       </div>

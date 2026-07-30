@@ -1,4 +1,4 @@
-# RackPulse (AquaMind AI) — Agentic Digital Twin for Data Center Water & Cooling Optimization
+# AquaRack — Agentic Digital Twin for Data Center Water & Cooling Optimization
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://reactjs.org/)
@@ -8,7 +8,7 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 [![Three.js](https://img.shields.io/badge/Three.js-000000?style=for-the-badge&logo=three.js&logoColor=white)](https://threejs.org/)
 
-> **RackPulse / AquaMind AI** is an enterprise-grade Agentic Digital Twin platform designed to forecast thermal load, optimize cooling demand, and dramatically reduce cooling-water consumption (WUE) in high-density AI data centers.
+> **AquaRack** is an enterprise-grade Agentic Digital Twin platform designed to forecast thermal load, optimize cooling demand, and dramatically reduce cooling-water consumption (WUE) in high-density AI data centers.
 
 ---
 
@@ -53,7 +53,7 @@
 ## 🔄 High-Level Reasoning Loop
 
 ```
-Laptop Telemetry / OpenDC Simulation
+Live Node Telemetry / Data Center Simulation
        ↓
 CockroachDB Database
        ↓

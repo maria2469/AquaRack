@@ -185,7 +185,7 @@ export default function Problem() {
               to="/solution"
               className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-medium text-black hover:scale-105 transition-transform"
             >
-              How RackPulse Solves This <ArrowRight size={15} />
+              How AquaRack Solves This <ArrowRight size={15} />
             </Link>
           </motion.div>
         </div>
