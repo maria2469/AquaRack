@@ -1,23 +1,36 @@
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
-sqlalchemy==2.0.35
-pydantic==2.9.2
-pydantic-settings==2.5.2
-psutil==6.0.0
-requests==2.32.3
-click==8.1.7
-reportlab==4.2.5
-python-dotenv==1.0.1
-httpx==0.27.2
-pytest==8.3.3
-sse-starlette==2.1.3
+# ── Core Web Framework ────────────────────────────────────────────────────────
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.6
+starlette>=0.38.0
+sse-starlette>=2.1.3
 
-# --- CockroachDB (SDD Tech Stack, primary datastore) ---
-sqlalchemy-cockroachdb==2.0.2
-psycopg2-binary==2.9.9
+# ── Data / ORM ────────────────────────────────────────────────────────────────
+sqlalchemy>=2.0.35
 
-# --- Amazon Bedrock + LangChain (SDD Tech Stack, primary reasoning layer) ---
-boto3==1.35.0
-langchain==0.3.7
-langchain-core==0.3.15
-langchain-aws==0.2.7
+# ── Pydantic (latest supports Python 3.14) ───────────────────────────────────
+pydantic>=2.10.0
+pydantic-settings>=2.6.0
+
+# ── System / Utilities ────────────────────────────────────────────────────────
+psutil>=6.0.0
+requests>=2.32.3
+click>=8.1.7
+python-dotenv>=1.0.1
+httpx>=0.27.2
+reportlab>=4.2.5
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+pytest>=8.3.3
+anyio>=4.0.0
+
+# ── CockroachDB (primary datastore) ───────────────────────────────────────────
+# psycopg2-binary has no Python 3.14 wheel yet; use psycopg (v3) instead.
+# sqlalchemy-cockroachdb 2.x supports psycopg v3.
+sqlalchemy-cockroachdb>=2.0.2
+psycopg[binary]>=3.1.0
+
+# ── Amazon Bedrock + LangChain (primary reasoning layer) ─────────────────────
+boto3>=1.35.0
+langchain>=0.3.7
+langchain-core>=0.3.15
+langchain-aws>=0.2.7

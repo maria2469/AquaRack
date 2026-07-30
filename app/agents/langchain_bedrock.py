@@ -129,15 +129,31 @@ def invoke_langchain(
     return out
 
 
+# Lazy singleton — built once on first call, reused for every subsequent
+# embedding request. Avoids repeated boto3 client construction which adds
+# latency and can itself trigger AWS throttling.
+_embedder = None
+
+
+def _get_embedder():
+    global _embedder
+    if _embedder is None:
+        from langchain_aws import BedrockEmbeddings
+
+        _embedder = BedrockEmbeddings(
+            model_id=settings.BEDROCK_EMBED_MODEL_ID,
+            region_name=settings.AWS_REGION,
+        )
+    return _embedder
+
+
 def embed_text_langchain(text: str) -> Optional[List[float]]:
     """
     Real Titan embedding via LangChain's BedrockEmbeddings (Section 11.2 / 15.2).
-    """
-    from langchain_aws import BedrockEmbeddings
 
-    embedder = BedrockEmbeddings(
-        model_id=settings.BEDROCK_EMBED_MODEL_ID,
-        region_name=settings.AWS_REGION,
-    )
-    return embedder.embed_query(text)
+    Uses a module-level singleton so the boto3 client is created once and
+    reused, cutting per-call overhead and reducing the chance of triggering
+    AWS throttling from rapid back-to-back requests.
+    """
+    return _get_embedder().embed_query(text)
 

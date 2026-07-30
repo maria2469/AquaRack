@@ -1,19 +1,56 @@
-# RackPulse — Where AI Learns to Save Water
+# RackPulse (AquaMind AI) — Agentic Digital Twin for Data Center Water & Cooling Optimization
 
-**RackPulse** is an enterprise-grade Agentic Digital Twin that drastically reduces cooling-water consumption in AI data centers.
+[![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://reactjs.org/)
+[![CockroachDB](https://img.shields.io/badge/CockroachDB-6933FF?style=for-the-badge&logo=cockroachlabs&logoColor=white)](https://www.cockroachlabs.com/)
+[![Amazon Bedrock](https://img.shields.io/badge/Amazon_Bedrock-FF9900?style=for-the-badge&logo=amazonaws&logoColor=white)](https://aws.amazon.com/bedrock/)
+[![LangChain](https://img.shields.io/badge/LangChain-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white)](https://www.langchain.com/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
+[![Three.js](https://img.shields.io/badge/Three.js-000000?style=for-the-badge&logo=three.js&logoColor=white)](https://threejs.org/)
 
-It combines:
-- **Live Laptop Telemetry** & AWS CloudWatch Metrics
-- **CockroachDB Managed MCP Server** (Zero-Bypass AI Persistent Agentic Memory)
-- **CockroachDB Distributed Vector Indexing** (In-Database `<=>` Cosine Similarity Search)
-- **Amazon Bedrock Reasoning** (Titan Text Embeddings V2 + Claude Structured Output)
-- **Thermodynamic Water Model** (CPU/GPU load, psychrometric evaporative factors, live weather)
-- **OpenDC Multi-Rack Scaling** (Rack 1 Laptop → Racks 2–100 Simulated Fleet)
-- **React Dashboard & Agent Explanation Panel**
+> **RackPulse / AquaMind AI** is an enterprise-grade Agentic Digital Twin platform designed to forecast thermal load, optimize cooling demand, and dramatically reduce cooling-water consumption (WUE) in high-density AI data centers.
 
 ---
 
-## High Level Architecture
+## 📸 System Architecture & Visual Overview
+
+### Overall System Architecture
+![Overall Architecture](frontend/public/overall%20architecture.png)
+
+### AWS & Cloud Integration Flow
+![AWS Architecture](frontend/public/aws%20archtecture.png)
+
+### Digital Twin Telemetry Engine
+![Digital Twin Engine](frontend/public/digital%20twin.png)
+
+### Continuous Agentic Memory & Vector Search Loop
+![Memory Architecture](frontend/public/memory%20archtecture.png)
+
+### Agent Memory Retrieval via CockroachDB MCP
+![Agent Memory Flow](frontend/public/agent%20memory.png)
+
+### Water Prediction & Thermodynamic Model
+![Water Prediction](frontend/public/water%20predication.png)
+
+### End-to-End User & Agent Flow
+![User Flow](frontend/public/user_flow.png)
+
+---
+
+## ✨ Core Features
+
+- 🛰️ **Real-Time Telemetry Daemon**: Polls CPU, GPU, RAM, battery, and fan telemetry every 5 seconds with automatic SQLite local buffer replay on network disconnects.
+- 🏢 **Digital Twin Engine**: Maps single-device compute load onto configurable multi-rack profiles, computing synthetic thermal kW loads without requiring physical data center hardware.
+- 💧 **Thermodynamic Water Model**: Converts thermal load into cooling demand (kW) and water consumption (litres/hour) using PUE, WUE, and psychrometric evaporation approximations.
+- 🧠 **CockroachDB Native Vector Indexing**: Stores event summaries with Titan 384-dimensional embeddings and leverages CockroachDB's native `<=>` cosine-distance operator for fast in-database similarity search.
+- 🔌 **CockroachDB Managed MCP Server**: Exposes structured Model Context Protocol tools (`retrieve_similar_incidents`, `retrieve_previous_recommendations`, `store_agent_memory`), enforcing zero-raw-SQL memory access rules.
+- 🤖 **Amazon Bedrock & LangChain Agent**: Invokes `ChatBedrockConverse` with structured output schemas (`RecommendationOutput`) to return actionable cooling optimizations with cited memory IDs and confidence scores.
+- 🖥️ **Interactive 3D Dashboard**: High-performance React + Three.js + Tailwind CSS UI featuring custom GLSL water shaders (Dirty Wasting Water vs Clean Saved Water Waterfall) and live SSE observability logs.
+- 🛡️ **Zero Mandatory Cloud Dependency**: Built-in fallback to local SQLite and deterministic embeddings ensures complete offline functionality (SDD FR-1.11).
+
+---
+
+## 🔄 High-Level Reasoning Loop
 
 ```
 Laptop Telemetry / OpenDC Simulation
@@ -24,87 +61,130 @@ Vector Indexing (memory_embeddings)
        ↓
 CockroachDB Managed MCP Server (retrieve_similar_incidents, retrieve_previous_recommendations)
        ↓
-Amazon Bedrock Agent Reasoning
+Amazon Bedrock Agent Reasoning via LangChain
        ↓
-Water Optimization Recommendation
+Water Optimization Recommendation with Confidence Score
        ↓
-React Dashboard & Agent Explanation Panel
+React Dashboard & Real-Time Agent Explanation Panel
        ↓
 Continuous Learning Loop (Store Outcome → Future Memory)
 ```
 
 ---
 
-## Continuous Agentic Memory Loop
+## 🛠️ CockroachDB Managed MCP Tools Exposed
 
-```
-Observe Telemetry → Persist Telemetry → Generate Embedding → Vector Index Search via MCP → Bedrock Reasoning → Recommendation → Store Recommendation & Outcome → Future Memory
-```
-
-The AI agent never constructs raw SQL queries directly for memory retrieval; instead, Bedrock queries historical context strictly through the **CockroachDB Managed MCP Server Client**.
-
----
-
-## Managed MCP Tools Exposed
-
-1. `retrieve_similar_incidents(query_text, k)`
-2. `retrieve_previous_recommendations(query_text, k)`
-3. `retrieve_water_saving_history(rack_id, k)`
-4. `retrieve_high_gpu_events(threshold_pct, k)`
-5. `store_agent_memory(memory_type, source_id, summary)`
+1. `retrieve_similar_incidents(query_text, k)` — Retrieves past thermal/water incidents matching semantic query vector via CockroachDB vector search.
+2. `retrieve_previous_recommendations(query_text, k)` — Searches historical AI agent recommendations and cited memory outcomes.
+3. `retrieve_water_saving_history(rack_id, k)` — Fetches historical litres-saved metrics for specified rack.
+4. `retrieve_high_gpu_events(threshold_pct, k)` — Filters events where GPU utilization breached risk thresholds.
+5. `store_agent_memory(memory_type, source_id, summary)` — Persists new events, recommendations, and outcomes back into CockroachDB vector memory.
 
 ---
 
-## Production API Reference
+## 🌐 Production API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/telemetry/latest` | Retrieve current live laptop & weather telemetry |
-| `GET` | `/api/incidents` | Retrieve historical incidents |
-| `GET` | `/api/recommendations` | Retrieve past AI recommendations |
-| `POST` | `/api/reason` | Trigger full Bedrock + MCP Agent reasoning loop |
+| `GET` | `/api/v1/dashboard/summary` | Retrieve current telemetry, water models, and open incident counts |
+| `GET` | `/api/telemetry/latest` | Retrieve current raw laptop & weather telemetry |
+| `GET` | `/api/incidents` | Retrieve historical telemetry incidents |
+| `GET` | `/api/recommendations` | Retrieve past AI cooling recommendations |
+| `POST` | `/api/reason` | Execute Bedrock + MCP Agent reasoning pipeline |
 | `POST` | `/api/memory/search` | Search CockroachDB vector index via MCP tools |
 | `GET` | `/api/memory/history` | List persistent memory embeddings |
 | `GET` | `/api/dashboard` | Aggregated KPI metrics for React frontend |
-| `GET` | `/mcp/tools` | Discover registered MCP tools |
+| `GET` | `/mcp/tools` | Discover registered CockroachDB MCP tools |
 | `POST` | `/mcp/rpc` | JSON-RPC 2.0 endpoint for CockroachDB Managed MCP Server |
 
 ---
 
-## Quick Start
+## 🚀 Quick Start Guide
 
-### 1. Database Setup (CockroachDB Cloud or Local Single-Node)
+### Prerequisites
+- **Python**: `3.10+`
+- **Node.js**: `18+` & `npm`
+- **Database**: CockroachDB (Cloud cluster or local single-node)
+- **AWS Credentials**: (Optional) AWS account with Amazon Bedrock access for Titan Embeddings & Claude
 
+---
+
+### 1. Database Setup
+
+#### Option A: CockroachDB Cloud Serverless (Recommended)
+Set your connection string in `.env`:
+```ini
+DATABASE_URL="cockroachdb+psycopg://user:password@host:26257/Rackpulse?sslmode=verify-full"
+```
+
+#### Option B: Local Single-Node CockroachDB
 ```bash
 cockroach start-single-node --insecure --listen-addr=localhost:26257 --background
 cockroach sql --insecure --execute="CREATE DATABASE IF NOT EXISTS Rackpulse;"
 ```
 
-### 2. Backend Setup & Run
+---
+
+### 2. Backend Setup
 
 ```bash
+# Clone repository
+git clone https://github.com/maria2469/RackPulse.git
+cd RackPulse
+
+# Create virtual environment
 python -m venv .venv
-source .venv/bin/activate  # Or .venv\Scripts\activate on Windows
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies
 pip install -r requirements.txt
+
+# Configure environment variables
 cp .env.example .env
+
+# Run FastAPI backend server
 python run.py
 ```
+Backend will start at `http://127.0.0.1:8000`.
 
-### 3. Frontend Setup (React / Vite)
+---
+
+### 3. Frontend Setup
 
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-
-Open `http://localhost:5173` or `http://127.0.0.1:8000` to view the **RackPulse Enterprise Dashboard**.
+Frontend development server will start at `http://localhost:5173`.
 
 ---
 
-## Verification & Testing
+## 🧪 Verification & Testing
+
+Run automated pytest suite verifying telemetry ingestion, thermodynamic water calculations, CockroachDB vector searches, and Bedrock fallback mechanisms:
 
 ```bash
-pytest tests/ -q
+pytest tests/ -v
 ```
 
+To run a production build of the Vite frontend:
+```bash
+cd frontend
+npm run build
+```
+
+---
+
+## 📜 Tech Stack Summary
+
+- **Backend**: FastAPI, SQLAlchemy, Pydantic, Uvicorn, Python 3.14
+- **AI & Reasoning**: Amazon Bedrock (`amazon.titan-embed-text-v2`, `anthropic.claude-3-haiku`), LangChain, Model Context Protocol (MCP)
+- **Database**: CockroachDB (Native Vector Indexing, `<=>` Cosine Distance)
+- **Frontend**: React 18, Vite 8, Tailwind CSS v4, Three.js, React Three Fiber, Lucide Icons, Framer Motion
+
+---
+
+## 📄 License
+
+Distributed under the MIT License. See `LICENSE` for details.

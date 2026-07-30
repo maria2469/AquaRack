@@ -10,7 +10,10 @@ generated via Amazon Bedrock Titan Text Embeddings V2 instead.
 import hashlib
 import math
 import re
-from typing import List
+import time
+import logging
+from typing import List, Dict
+from functools import lru_cache
 
 from app.config import settings
 
@@ -18,6 +21,10 @@ LOCAL_EMBED_DIM = 384
 LOCAL_MODEL_NAME = "local-hashed-bow-v1"
 
 _token_re = re.compile(r"[a-zA-Z0-9_]+")
+logger = logging.getLogger(__name__)
+
+# In-process cache to avoid redundant Bedrock calls
+_embedding_cache: Dict[str, List[float]] = {}
 
 
 def _tokenize(text: str) -> List[str]:
@@ -49,20 +56,34 @@ def _bedrock_embed(text: str) -> List[float]:
     """Real Titan embedding via LangChain's BedrockEmbeddings wrapper (SDD
     Tech Stack: LangChain + Amazon Bedrock)."""
     from app.agents.langchain_bedrock import embed_text_langchain
+    from botocore.exceptions import ClientError
 
-    vector = embed_text_langchain(text)
-    if not vector:
-        raise RuntimeError("LangChain BedrockEmbeddings returned no vector")
-    return vector
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            return embed_text_langchain(text)
+        except ClientError as e:
+            if e.response.get("Error", {}).get("Code") == "ThrottlingException":
+                if attempt < max_retries - 1:
+                    wait = 2 ** attempt
+                    logger.warning(f"Bedrock throttled, retrying in {wait}s...")
+                    time.sleep(wait)
+                    continue
+            raise
+    raise RuntimeError("LangChain BedrockEmbeddings failed after retries")
 
 
 def embed_text(text: str):
     """Returns (vector, model_name_used). Falls back to local embedding on any error."""
     if settings.BEDROCK_ENABLED:
+        if text in _embedding_cache:
+            return _embedding_cache[text], settings.BEDROCK_EMBED_MODEL_ID
         try:
-            return _bedrock_embed(text), settings.BEDROCK_EMBED_MODEL_ID
-        except Exception:
-            # Bedrock unavailable/misconfigured -> zero-cost local fallback (SDD FR-1.11)
+            vector = _bedrock_embed(text)
+            _embedding_cache[text] = vector
+            return vector, settings.BEDROCK_EMBED_MODEL_ID
+        except Exception as e:
+            logger.error(f"Bedrock embedding failed: {e}. Falling back to local.")
             pass
     return _local_embed(text), LOCAL_MODEL_NAME
 
