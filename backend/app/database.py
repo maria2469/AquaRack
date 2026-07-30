@@ -29,18 +29,23 @@ from app.config import settings
 
 log = logging.getLogger(__name__)
 
-IS_SQLITE = settings.DATABASE_URL.startswith("sqlite")
-IS_COCKROACHDB = settings.DATABASE_URL.startswith("cockroachdb://")
+db_url = settings.DATABASE_URL
+IS_SQLITE = db_url.startswith("sqlite")
+IS_COCKROACHDB = db_url.startswith("cockroachdb://") or db_url.startswith("cockroachdb+psycopg://")
 
 if IS_COCKROACHDB:
-    # Registers the `cockroachdb://` SQLAlchemy dialect (sqlalchemy-cockroachdb
-    # package, backed by psycopg2) as a side effect of import; connections
-    # are still made via create_engine() below.
     import sqlalchemy_cockroachdb  # noqa: F401
+
+# Auto-fix CockroachDB Cloud SSL certificate on Linux containers (Railway / Render / Docker)
+if not IS_SQLITE and "sslrootcert" not in db_url:
+    if "?" in db_url:
+        db_url += "&sslrootcert=system"
+    else:
+        db_url += "?sslrootcert=system"
 
 connect_args = {"check_same_thread": False} if IS_SQLITE else {}
 
-engine = create_engine(settings.DATABASE_URL, connect_args=connect_args, pool_pre_ping=True)
+engine = create_engine(db_url, connect_args=connect_args, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
