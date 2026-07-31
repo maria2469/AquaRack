@@ -89,6 +89,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "https://aqua-rack.vercel.app",
+        "https://aqua-rack-z42shl04s-marias-projects-76dd7319.vercel.app"
     ],
     allow_origin_regex=ALLOWED_ORIGIN_REGEX,
     allow_credentials=True,
