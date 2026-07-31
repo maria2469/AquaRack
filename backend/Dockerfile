@@ -10,11 +10,13 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy CockroachDB Cloud CA certificate
-COPY certs/root.crt /root/.postgresql/root.crt
+COPY root.crt /root/.postgresql/root.crt
 
+# Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy application source
 COPY . .
 
 ENV PYTHONUNBUFFERED=1
