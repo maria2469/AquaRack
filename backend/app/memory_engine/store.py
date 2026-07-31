@@ -32,8 +32,8 @@ def _python_cosine_fallback(
     from app.memory_engine.embed import cosine_similarity
 
     rows = (
-        db.query(models.AgentMemory)
-        .filter(models.AgentMemory.memory_type == memory_type)
+        db.query(models.MemoryEmbedding)
+        .filter(models.MemoryEmbedding.memory_type == memory_type)
         .all()
     )
     if not rows:
@@ -69,7 +69,7 @@ def search_memory_embeddings(
         matches = _python_cosine_fallback(db, query_vector, memory_type, k)
         retrieval_method = "python_cosine_fallback"
 
-    total = db.query(models.AgentMemory).filter(models.AgentMemory.memory_type == memory_type).count()
+    total = db.query(models.MemoryEmbedding).filter(models.MemoryEmbedding.memory_type == memory_type).count()
 
     return {
         "matches": matches,
@@ -82,9 +82,9 @@ def search_memory_embeddings(
 
 def store_memory_embedding(
     db: Session, memory_type: str, source_id: str, summary: str
-) -> "models.AgentMemory":
+) -> "models.MemoryEmbedding":
     vector, model_name = embed_text(summary)
-    row = models.AgentMemory(
+    row = models.MemoryEmbedding(
         memory_type=memory_type,
         source_id=source_id,
         summary=summary,
