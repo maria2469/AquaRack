@@ -22,7 +22,7 @@ from groq import Groq
 logger = logging.getLogger("aquamind.groq_synthesis")
 
 GROQ_API_KEY_2 = os.getenv("GROQ_API_KEY_2")
-GROQ_MODEL = "llama-3.3-70b-versatile"
+GROQ_MODEL = "openai/gpt-oss-120b"
 
 if not GROQ_API_KEY_2:
     logger.warning(
