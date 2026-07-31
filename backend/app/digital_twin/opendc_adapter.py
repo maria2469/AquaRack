@@ -223,14 +223,30 @@ def _run_job(job_id: str, spec: dict) -> None:
                     )
                 )
                 if twin_state.utilisation_pct >= 85:
-                    db.add(
-                        models.Incident(
-                            telemetry_id=row.telemetry_id,
-                            severity="high",
-                            description=f"[{mode}] {device_id} utilisation critical at {twin_state.utilisation_pct}%",
-                            resolved=False,
-                        )
+                    from app.memory_engine.summarise import summarise_incident
+                    from app.mcp.client import mcp_client
+
+                    incident = models.Incident(
+                        telemetry_id=row.telemetry_id,
+                        severity="HIGH",
+                        description=f"[{mode}] {device_id} utilisation critical at {twin_state.utilisation_pct:.1f}%",
+                        root_cause=(
+                            f"Rack profile cooling_efficiency={profile['cooling_efficiency']:.2f}, "
+                            f"hardware_age={profile['hardware_age']:.2f} under ambient {ambient_temp:.1f}\u00b0C"
+                        ),
                     )
+                    db.add(incident)
+                    db.commit()
+                    db.refresh(incident)
+
+                    summary = summarise_incident(
+                        severity=incident.severity,
+                        description=incident.description,
+                        root_cause=incident.root_cause,
+                        rack_id=rack.rack_id,
+                        created_at=incident.created_at.isoformat(),
+                    )
+                    mcp_client.store_agent_memory(db, "incident", incident.incident_id, summary)
                 db.commit()
 
                 last_twin_state = twin_state

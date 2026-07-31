@@ -65,14 +65,27 @@ def run_full_pipeline(db: Session, telemetry_id: str = None) -> dict:
 
     # Threshold-based incident flagging (Phase 1, per ER diagram "incidents" notes)
     if twin_state.utilisation_pct >= 85:
-        db.add(
-            models.Incident(
-                telemetry_id=reading.telemetry_id,
-                severity="high",
-                description=f"Utilisation critical at {twin_state.utilisation_pct}%",
-                resolved=False,
-            )
+        from app.memory_engine.summarise import summarise_incident
+        from app.mcp.client import mcp_client
+
+        incident = models.Incident(
+            telemetry_id=reading.telemetry_id,
+            severity="HIGH",
+            description=f"Utilisation critical at {twin_state.utilisation_pct:.1f}%",
+            root_cause="High GPU utilisation caused elevated thermal load",
         )
+        db.add(incident)
+        db.commit()
+        db.refresh(incident)
+
+        summary = summarise_incident(
+            severity=incident.severity,
+            description=incident.description,
+            root_cause=incident.root_cause,
+            rack_id=reading.rack_id,
+            created_at=incident.created_at.isoformat(),
+        )
+        mcp_client.store_agent_memory(db, "incident", incident.incident_id, summary)
 
     db.commit()
     db.refresh(wm_row)

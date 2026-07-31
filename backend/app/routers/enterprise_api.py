@@ -20,6 +20,7 @@ from app.database import get_db
 from app import models
 from app.mcp.client import mcp_client
 from app.memory_engine import store as memory_store
+from app.memory_engine.summarise import summarise_incident
 from app.agents.orchestrator import orchestrator
 from app.routers.simulate import run_full_pipeline
 from app.water_model.thermo import WaterModel
@@ -141,7 +142,14 @@ def list_incidents(
         db.add(inc)
         db.commit()
         db.refresh(inc)
-        mcp_client.store_agent_memory(db, "incident", inc.incident_id, inc.description)
+
+        summary = summarise_incident(
+            severity=inc.severity,
+            description=inc.description,
+            root_cause=inc.root_cause,
+            created_at=inc.created_at.isoformat(),
+        )
+        mcp_client.store_agent_memory(db, "incident", inc.incident_id, summary)
         incidents = [inc]
 
     return [
@@ -242,7 +250,15 @@ def generate_agent_reasoning(
         db.add(inc_row)
         db.commit()
         db.refresh(inc_row)
-        mcp_client.store_agent_memory(db, "incident", inc_row.incident_id, inc_row.description)
+
+        summary = summarise_incident(
+            severity=inc_row.severity,
+            description=inc_row.description,
+            root_cause=inc_row.root_cause,
+            rack_id=reading.rack_id,
+            created_at=inc_row.created_at.isoformat(),
+        )
+        mcp_client.store_agent_memory(db, "incident", inc_row.incident_id, summary)
 
     # Persist recommendation
     rec_text = result["recommendation"]
