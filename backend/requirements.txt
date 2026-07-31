@@ -37,3 +37,5 @@ watchtower>=3.0.0            # optional: CloudWatch log shipping (CLOUDWATCH_ENA
 langchain>=0.3.7
 langchain-core>=0.3.15
 langchain-aws>=0.2.7
+langchain-groq
+groq

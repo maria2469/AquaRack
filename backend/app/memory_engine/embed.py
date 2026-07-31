@@ -1,19 +1,25 @@
 """
 Memory Engine — Stage 2b: embedding (SDD Section 11.2 / 15.2).
 Default: local, zero-cost, deterministic hashed bag-of-words embedding
-(384-dim) — no model download, no network required. This keeps Phase 1
-"fully self-contained... does not require... AWS production infrastructure"
-(SDD Section 1).
-If BEDROCK_ENABLED=true and boto3/credentials are available, embeddings are
-generated via Amazon Bedrock Titan Text Embeddings V2 instead.
+(768-dim) — no model download, no network required.
+If OLLAMA_ENABLED=true and the Ollama call succeeds, embeddings are
+generated via a real semantic model instead.
+
+FIX: embed_text() now logs explicitly which path produced the vector
+(semantic Ollama vs. non-semantic local hash), and no longer returns
+LOCAL_MODEL_NAME "silently" — a caller reading model_name in logs can
+now tell whether retrieval quality can be trusted as semantic.
+Root cause note: hashed bag-of-words has near-zero semantic generalization
+-- "evaporative cooling" and "water flow" share no tokens, so it can only
+match on literal vocabulary overlap. Combined with near-identical templated
+summaries (see summarize.py fix), this is what produces flat, near-equal
+similarity scores across unrelated memories.
 """
 import hashlib
 import math
 import re
-import time
 import logging
 from typing import List, Dict, Optional
-from functools import lru_cache
 
 from app.config import settings
 
@@ -23,7 +29,6 @@ LOCAL_MODEL_NAME = "local-hashed-bow-768-v1"
 _token_re = re.compile(r"[a-zA-Z0-9_]+")
 logger = logging.getLogger(__name__)
 
-# In-process cache to avoid redundant Bedrock calls
 _embedding_cache: Dict[str, List[float]] = {}
 
 
@@ -32,13 +37,9 @@ def _tokenize(text: str) -> List[str]:
 
 
 def _local_embed(text: str, dim: int = LOCAL_EMBED_DIM) -> List[float]:
-    """
-    Deterministic hashed bag-of-words embedding: each token is hashed into
-    a bucket and contributes +1/-1 (sign from a second hash) to that
-    dimension, producing a stable, offline, zero-cost vector suitable for
-    cosine-similarity retrieval. Not a semantic model, but consistent and
-    good enough to demonstrate the RAG loop end-to-end (Phase 1 goal).
-    """
+    """Deterministic hashed bag-of-words embedding. NOT semantic -- see module
+    docstring. Kept as the offline zero-cost fallback, but every call site
+    that ends up here now logs it (see embed_text)."""
     vec = [0.0] * dim
     tokens = _tokenize(text)
     if not tokens:
@@ -54,13 +55,17 @@ def _local_embed(text: str, dim: int = LOCAL_EMBED_DIM) -> List[float]:
 
 def _ollama_embed(text: str) -> Optional[List[float]]:
     """Ollama vector embedding via LangChain OllamaEmbeddings wrapper."""
-    from app.agents.langchain_ollama import embed_text_ollama
+    from app.agents.langchain_groq import embed_text_ollama
 
     return embed_text_ollama(text)
 
 
 def embed_text(text: str):
-    """Returns (vector, model_name_used). Falls back to local embedding on any error."""
+    """Returns (vector, model_name_used).
+
+    FIX: every fallback path is now logged so degraded (non-semantic)
+    retrieval is visible in logs instead of silent.
+    """
     if settings.OLLAMA_ENABLED:
         if text in _embedding_cache:
             return _embedding_cache[text], settings.OLLAMA_EMBED_MODEL
@@ -69,9 +74,25 @@ def embed_text(text: str):
             if vector:
                 _embedding_cache[text] = vector
                 return vector, settings.OLLAMA_EMBED_MODEL
+            logger.warning(
+                "Ollama embedding returned empty result for text (len=%d); "
+                "falling back to non-semantic local hash embedding.",
+                len(text),
+            )
         except Exception as e:
-            logger.error(f"Ollama embedding failed: {e}. Falling back to local.")
-            pass
+            logger.error(
+                "Ollama embedding failed (%s); falling back to non-semantic "
+                "local hash embedding. Retrieval quality will be degraded "
+                "until this is resolved.",
+                e,
+            )
+    else:
+        logger.warning(
+            "OLLAMA_ENABLED is False -- using non-semantic local hash embedding "
+            "(%s). Similarity scores will reflect literal token overlap only, "
+            "not meaning.",
+            LOCAL_MODEL_NAME,
+        )
     return _local_embed(text), LOCAL_MODEL_NAME
 
 

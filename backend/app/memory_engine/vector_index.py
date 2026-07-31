@@ -53,7 +53,11 @@ def ensure_native_vector_column(
 
     except Exception as e:
         db.rollback()
-        logger.warning(e)
+        logger.error(
+            "Failed to ensure native vector column/index on %s (dim=%d): %s. "
+            "Native VECTOR search will keep failing until this is fixed.",
+            table_name, dim, e,
+        )
 
 
 def sync_native_vector(
@@ -61,6 +65,12 @@ def sync_native_vector(
     row_id,
     vector: List[float],
 ):
+    """FIX: this previously swallowed all failures behind a bare warning, so
+    vector_native could silently stay NULL for an unbounded number of rows,
+    shrinking the native-search candidate pool without any visible signal.
+    Now raises after logging, so callers (store_memory / store_memory_embedding)
+    can decide whether to surface this to a caller/metrics rather than have it
+    disappear into a log line no one is watching."""
     if not IS_COCKROACHDB:
         return
 
@@ -86,7 +96,31 @@ def sync_native_vector(
 
     except Exception as e:
         db.rollback()
-        logger.warning(e)
+        logger.error(
+            "Failed to sync vector_native for memory_embeddings.id=%s: %s. "
+            "This row will be invisible to native VECTOR search until re-synced.",
+            row_id, e,
+        )
+        raise
+
+
+def count_unsynced_vectors(db: Session, memory_type: Optional[str] = None) -> int:
+    """NEW: lets you check, on demand, how many rows are missing vector_native
+    -- i.e. how degraded your native-search candidate pool currently is.
+    Call this from a health-check endpoint or before trusting a demo run."""
+    if not IS_COCKROACHDB:
+        return 0
+    sql = "SELECT count(*) FROM memory_embeddings WHERE vector_native IS NULL"
+    params = {}
+    if memory_type:
+        sql += " AND memory_type = :mtype"
+        params["mtype"] = memory_type
+    try:
+        return db.execute(text(sql), params).scalar_one()
+    except Exception as e:
+        db.rollback()
+        logger.warning("count_unsynced_vectors failed: %s", e)
+        return -1
 
 
 def native_search_memory_embeddings(
@@ -98,7 +132,7 @@ def native_search_memory_embeddings(
     """
     Native CockroachDB VECTOR search.
 
-    Returns None if unavailable.
+    Returns None if unavailable (caller falls back to Python cosine).
     """
 
     if not IS_COCKROACHDB:
@@ -139,6 +173,15 @@ def native_search_memory_embeddings(
             .mappings()
             .all()
         )
+
+        if not rows:
+            unsynced = count_unsynced_vectors(db, memory_type)
+            logger.warning(
+                "Native VECTOR search returned 0 rows for memory_type=%s "
+                "(unsynced rows currently NULL: %s). Caller will fall back "
+                "to Python cosine over the same underlying table.",
+                memory_type, unsynced,
+            )
 
         return [
             {

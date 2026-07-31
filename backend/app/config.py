@@ -140,7 +140,7 @@ class Settings(BaseSettings):
     # ==========================================================
     # CLOUDWATCH
     # ==========================================================
-    CLOUDWATCH_ENABLED: bool = True
+    CLOUDWATCH_ENABLED: bool = False
 
     CLOUDWATCH_LOG_GROUP: str = (
         "/aquamind/reasoning"
@@ -216,3 +216,17 @@ os.makedirs(
     settings.S3_LOCAL_FALLBACK_DIR,
     exist_ok=True
 )
+
+GROQ_ENABLED: bool = True
+
+GROQ_API_KEY: str = os.getenv(
+    "GROQ_API_KEY",
+    ""
+)
+
+GROQ_MODEL: str = os.getenv(
+    "GROQ_MODEL",
+    "openai/gpt-oss-120b"
+)
+
+GROQ_TIMEOUT_SECONDS: int = 60

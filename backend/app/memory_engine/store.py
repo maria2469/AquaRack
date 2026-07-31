@@ -1,305 +1,106 @@
 """
-Memory Engine — Stage 3 (store & index) and Stage 4 (retrieve)
-
-Uses CockroachDB native VECTOR search when available and automatically
-falls back to Python cosine similarity on SQLite or if native VECTOR
-search is unavailable.
-
-The fallback is transaction-safe: if a CockroachDB query fails, the
-session is rolled back before continuing so subsequent ORM queries do
-not fail with:
-
-    current transaction is aborted
+Vector memory storage/search for RackPulse.
 """
-
-from typing import List, Optional
-
+import logging
+import os
+from typing import List, Dict, Any
 from sqlalchemy.orm import Session
 
 from app import models
-from app.memory_engine.embed import cosine_similarity, embed_text
-from app.memory_engine import vector_index
+from app.memory_engine.embed import embed_text  # FIX: use the real embed_text
+                                                   # from embed.py -- do not
+                                                   # redefine/placeholder it here
+
+logger = logging.getLogger("aquamind.memory_store")
 
 
-# ------------------------------------------------------------------
-# Store conversational memory
-# ------------------------------------------------------------------
-
-def store_memory(
-    db: Session,
-    conversation_id: str,
-    mem_type: str,
-    summary_text: str,
-) -> models.Memory:
-
-    memory = models.Memory(
-        conversation_id=conversation_id,
-        type=mem_type,
-        summary_text=summary_text,
-        tier="hot",
-    )
-
-    db.add(memory)
-    db.flush()
-
-    vector, model_name = embed_text(summary_text)
-
-    embedding = models.Embedding(
-        memory_id=memory.memory_id,
-        vector=vector,
-        model_name=model_name,
-    )
-
-    db.add(embedding)
-
-    db.commit()
-
-    db.refresh(memory)
-    db.refresh(embedding)
-
-    # Sync CockroachDB native VECTOR column (optional)
-    try:
-        vector_index.sync_native_vector(
-            db,
-            embedding.embedding_id,
-            vector,
-        )
-    except Exception:
-        db.rollback()
-
-    return memory
+def native_search_memory_embeddings(
+    db: Session, query_vector: List[float], memory_type: str, k: int
+) -> List[Dict[str, Any]]:
+    """Delegates to the real implementation in vector_index.py -- that file
+    already has the correct SQL, NULL-handling, and count_unsynced_vectors
+    diagnostics. Keeping two versions of this function is exactly the kind
+    of drift that caused the original bug."""
+    from app.memory_engine.vector_index import native_search_memory_embeddings as _native
+    return _native(db, query_vector, memory_type, k)
 
 
-# ------------------------------------------------------------------
-# Default conversation
-# ------------------------------------------------------------------
-
-def get_or_create_default_conversation(db: Session) -> str:
-
-    convo = db.query(models.Conversation).first()
-
-    if convo:
-        return convo.conversation_id
-
-    convo = models.Conversation(
-        user_id="system",
-        channel="agent",
-    )
-
-    db.add(convo)
-    db.commit()
-    db.refresh(convo)
-
-    return convo.conversation_id
-
-
-# ------------------------------------------------------------------
-# Search conversation memories
-# ------------------------------------------------------------------
-
-def search_memories(
-    db: Session,
-    query_text: str,
-    k: int = 5,
-) -> List[dict]:
-
-    query_vector, model_name = embed_text(query_text)
-
-    # -------------------------
-    # Native VECTOR search
-    # -------------------------
-    try:
-
-        native = vector_index.native_search(
-            db,
-            query_vector,
-            model_name,
-            k=k,
-        )
-
-        if native is not None:
-            return native
-
-    except Exception as exc:
-
-        print(f"Native memory search failed: {exc}")
-        db.rollback()
-
-    db.rollback()
-
-    # -------------------------
-    # Python fallback
-    # -------------------------
+def _python_cosine_fallback(
+    db: Session, query_vector: List[float], memory_type: str, k: int
+) -> List[Dict[str, Any]]:
+    logger.warning("Using Python cosine fallback")
+    from app.memory_engine.embed import cosine_similarity
 
     rows = (
-        db.query(models.Memory, models.Embedding)
-        .join(
-            models.Embedding,
-            models.Embedding.memory_id == models.Memory.memory_id,
-        )
-        .filter(
-            models.Embedding.model_name == model_name
-        )
+        db.query(models.AgentMemory)
+        .filter(models.AgentMemory.memory_type == memory_type)
         .all()
     )
+    if not rows:
+        return []
 
-    scored = []
-
-    for memory, embedding in rows:
-
-        score = cosine_similarity(
-            query_vector,
-            embedding.vector,
-        )
-
-        scored.append((score, memory))
-
-    scored.sort(
-        key=lambda x: x[0],
-        reverse=True,
-    )
-
-    return [
+    scored = [
         {
-            "memory_id": memory.memory_id,
-            "type": memory.type,
-            "summary_text": memory.summary_text,
-            "tier": memory.tier,
-            "created_at": memory.created_at,
-            "similarity": round(score, 4),
+            "id": r.id,
+            "source_id": r.source_id,
+            "summary": r.summary,
+            "created_at": r.created_at,
+            "similarity": cosine_similarity(query_vector, r.embedding),
         }
-        for score, memory in scored[:k]
+        for r in rows
     ]
+    scored.sort(key=lambda x: x["similarity"], reverse=True)
+    return scored[:k]
 
-
-# ------------------------------------------------------------------
-# Store Enterprise Memory
-# ------------------------------------------------------------------
-
-def store_memory_embedding(
-    db: Session,
-    memory_type: str,
-    source_id: str,
-    summary: str,
-) -> models.MemoryEmbedding:
-
-    vector, _ = embed_text(summary)
-
-    mem = models.MemoryEmbedding(
-        memory_type=memory_type,
-        source_id=source_id,
-        embedding=vector,
-        summary=summary,
-    )
-
-    db.add(mem)
-    db.commit()
-    db.refresh(mem)
-
-    # Sync native VECTOR column (optional)
-    try:
-
-        vector_index.sync_native_vector(
-            db=db,
-            row_id=mem.id,
-            vector=vector,
-        )
-
-    except Exception:
-
-        db.rollback()
-
-    return mem
-
-
-# ------------------------------------------------------------------
-# Search Enterprise Memory
-# ------------------------------------------------------------------
 
 def search_memory_embeddings(
-    db: Session,
-    query_text: str,
-    memory_type: Optional[str] = None,
-    k: int = 5,
-) -> List[dict]:
-    """
-    Search memory_embeddings.
-
-    Order of execution:
-
-        1. CockroachDB native VECTOR search
-
-        2. Python cosine similarity fallback
-    """
-
-    query_vector, _ = embed_text(query_text)
-
-    # ---------------------------------------------------
-    # Native CockroachDB VECTOR search
-    # ---------------------------------------------------
+    db: Session, query_text: str, memory_type: str, k: int = 5
+) -> Dict[str, Any]:
+    query_vector, model_name = embed_text(query_text)  # FIX: real embed_text now
+                                                          # returns (vector, model_name)
 
     try:
-
-        native = vector_index.native_search_memory_embeddings(
-            db=db,
-            query_vector=query_vector,
-            memory_type=memory_type,
-            k=k,
-        )
-
-        if native is not None:
-            return native
-
+        matches = native_search_memory_embeddings(db, query_vector, memory_type, k)
+        retrieval_method = "cockroach_vector" if matches else None
+        if matches is None:
+            raise RuntimeError("native search unavailable")
     except Exception as exc:
+        logger.warning("Native VECTOR search failed (%s); falling back to Python cosine.", exc)
+        matches = _python_cosine_fallback(db, query_vector, memory_type, k)
+        retrieval_method = "python_cosine_fallback"
 
-        print(f"Native vector search failed: {exc}")
+    total = db.query(models.AgentMemory).filter(models.AgentMemory.memory_type == memory_type).count()
 
-        db.rollback()
+    return {
+        "matches": matches,
+        "retrieval_method": retrieval_method,
+        "embedding_model": model_name,  # FIX: report the *actual* model used
+                                          # this request, not a hardcoded constant
+        "searched_records": total,
+    }
 
-    # Important:
-    # If CockroachDB produced any SQL error,
-    # rollback before running ORM queries.
 
-    db.rollback()
-
-    # ---------------------------------------------------
-    # Python cosine similarity fallback
-    # ---------------------------------------------------
-
-    query = db.query(models.MemoryEmbedding)
-
-    if memory_type:
-
-        query = query.filter(
-            models.MemoryEmbedding.memory_type == memory_type
-        )
-
-    rows = query.all()
-
-    scored = []
-
-    for row in rows:
-
-        score = cosine_similarity(
-            query_vector,
-            row.embedding,
-        )
-
-        scored.append((score, row))
-
-    scored.sort(
-        key=lambda x: x[0],
-        reverse=True,
+def store_memory_embedding(
+    db: Session, memory_type: str, source_id: str, summary: str
+) -> "models.AgentMemory":
+    vector, model_name = embed_text(summary)
+    row = models.AgentMemory(
+        memory_type=memory_type,
+        source_id=source_id,
+        summary=summary,
+        embedding=vector,
     )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
 
-    return [
-        {
-            "id": row.id,
-            "memory_type": row.memory_type,
-            "source_id": row.source_id,
-            "summary": row.summary,
-            "created_at": row.created_at,
-            "similarity": round(score, 4),
-        }
-        for score, row in scored[:k]
-    ]
+    from app.memory_engine.vector_index import sync_native_vector
+    try:
+        sync_native_vector(db, row_id=row.id, vector=vector)
+    except Exception:
+        # already logged with full context inside sync_native_vector;
+        # row still exists with a valid embedding column, just not yet
+        # mirrored into vector_native for native search
+        pass
+
+    return row

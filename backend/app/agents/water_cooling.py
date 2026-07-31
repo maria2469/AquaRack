@@ -8,7 +8,7 @@ falling back gracefully to deterministic rules_fallback on any error.
 """
 from typing import Dict
 
-from app.agents import langchain_ollama, rules_fallback
+from app.agents import langchain_groq, rules_fallback
 from app.config import settings
 from app.observability import reasoning_logger as rl
 
@@ -34,9 +34,9 @@ class WaterCoolingAgent:
             },
         )
 
-        if settings.OLLAMA_ENABLED:
+        if settings.GROQ_ENABLED:
             try:
-                result = langchain_ollama.invoke_langchain_ollama(
+                result = langchain_groq.invoke_langchain_groq(
                     run_id, twin_state_obj.model_dump(), water_out, memories, open_incidents, self.name
                 )
                 result["agent"] = self.name
