@@ -18,6 +18,15 @@ updating telemetry + weather data. No separate `python -m
 app.collector.run_collector` process is needed. The thread is a daemon
 thread, so it's killed automatically when the main process exits; no
 manual shutdown/cleanup is required.
+
+FIX (CORS): the previous allow_origins list only contained the production
+Vercel domain (https://aqua-rack.vercel.app) and localhost. Vercel
+preview/branch deployments get a per-branch generated URL of the form
+aqua-rack-git-<branch>-<team>.vercel.app, which is what was actually
+calling the API and getting blocked (no Access-Control-Allow-Origin header
+-> every request failed before reaching route handlers). Added
+allow_origin_regex to match any preview deployment for this project, plus
+kept the explicit list for clarity/back-compat.
 """
 import logging
 import os
@@ -69,12 +78,19 @@ app = FastAPI(
     ),
 )
 
+# FIX: regex covers any Vercel preview/branch deployment for this project
+# (e.g. https://aqua-rack-git-main-marias-projects-76dd7319.vercel.app),
+# not just the single production URL. Adjust the team/project slug pattern
+# below if your Vercel team or project name ever changes.
+ALLOWED_ORIGIN_REGEX = r"^https://aqua-rack(-git-[a-z0-9\-]+)?(-[a-z0-9]+)?\.vercel\.app$"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
         "https://aqua-rack.vercel.app",
     ],
+    allow_origin_regex=ALLOWED_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -165,7 +181,6 @@ app.include_router(memory.router)
 app.include_router(dashboard.router)
 app.include_router(reports.router)
 app.include_router(agent_trace.router)
-
 
 
 # --- Serve the dashboard (no Node/build step required) ---
