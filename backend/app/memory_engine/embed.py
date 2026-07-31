@@ -17,8 +17,8 @@ from functools import lru_cache
 
 from app.config import settings
 
-LOCAL_EMBED_DIM = 384
-LOCAL_MODEL_NAME = "local-hashed-bow-v1"
+LOCAL_EMBED_DIM = 768
+LOCAL_MODEL_NAME = "local-hashed-bow-768-v1"
 
 _token_re = re.compile(r"[a-zA-Z0-9_]+")
 logger = logging.getLogger(__name__)
