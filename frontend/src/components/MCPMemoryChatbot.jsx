@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   BrainCircuit, Search, Send, X, Bot, Sparkles, Database,
   ShieldCheck, Droplets, Zap, ChevronRight, RefreshCw, MessageSquare,
-  AlertCircle, ChevronDown, Minimize2
+  AlertCircle, ChevronDown, Minimize2, Radio, HardDriveDownload
 } from "lucide-react";
 import { postMemorySearch } from "../lib/api";
 
@@ -13,6 +13,27 @@ const SUGGESTIONS = [
   { icon: AlertCircle, label: "root cause of evaporative cooling degradation" },
   { icon: Database, label: "historical memory matches for Rack 1-10" },
 ];
+
+// FIX: retrieval_method comes back as "cockroach_vector" | "fallback_recent"
+// from the backend. Map to a small badge so the UI is honest about whether
+// this was a real semantic vector match or just "most recent rows".
+function RetrievalBadge({ method, embeddingModel, searchedRecords }) {
+  const isVector = method === "cockroach_vector";
+  return (
+    <div
+      className={`flex items-center gap-1.5 text-[10px] font-mono px-2 py-1 rounded-full border ${isVector
+          ? "bg-signal/10 border-signal/30 text-signal"
+          : "bg-amber/10 border-amber/30 text-amber"
+        }`}
+      title={`embedding model: ${embeddingModel || "unknown"} · searched ${searchedRecords ?? 0} records`}
+    >
+      {isVector ? <Radio size={11} /> : <HardDriveDownload size={11} />}
+      <span>
+        {isVector ? "CockroachDB Vector Search" : "Fallback (most recent)"}
+      </span>
+    </div>
+  );
+}
 
 export default function MCPMemoryChatbot({ isOpen, setIsOpen }) {
   const [messages, setMessages] = useState([
@@ -68,20 +89,33 @@ export default function MCPMemoryChatbot({ isOpen, setIsOpen }) {
 
     try {
       const res = await postMemorySearch(text.trim(), 5);
-      const incidents = (res.similar_incidents || []).map((i) => ({
+
+      // FIX: backend returns { similar_incidents: { matches: [...], retrieval_method, embedding_model, searched_records },
+      // previous_recommendations: { matches: [...], ... } } -- these are objects, not arrays.
+      // Previously the code did `(res.similar_incidents || []).map(...)`, which silently
+      // produced [] via the `|| []` fallback since an object is truthy but has no .map,
+      // so it would have actually thrown before ever reaching the .map. Unwrap .matches first.
+      const incidentBlock = res.similar_incidents || {};
+      const recommendationBlock = res.previous_recommendations || {};
+
+      const incidents = (incidentBlock.matches || []).map((i) => ({
         memory_id: i.incident_id || i.id,
         type: "incident",
         summary_text: i.description || i.summary,
-        root_cause: i.root_cause || "Thermal spike under load",
-        similarity: i.similarity ?? 0.94,
+        root_cause: i.root_cause || null, // FIX: no more fake "Thermal spike under load" filler
+        similarity: i.similarity, // FIX: no more ?? 0.94 fabricated fallback
+        severity: i.severity,
+        created_at: i.created_at,
       }));
 
-      const recs = (res.previous_recommendations || []).map((r) => ({
+      const recs = (recommendationBlock.matches || []).map((r) => ({
         memory_id: r.recommendation_id || r.id,
         type: "recommendation",
-        summary_text: r.recommendation_text || r.text,
-        expected_water_saving: r.expected_water_saving ?? 17.8,
-        similarity: r.similarity ?? 0.91,
+        summary_text: r.recommendation_text || r.summary || r.text,
+        expected_water_saving: r.expected_water_saving ?? null, // FIX: no fabricated 17.8
+        confidence: r.confidence ?? null,
+        similarity: r.similarity,
+        created_at: r.created_at,
       }));
 
       const memories = [...incidents, ...recs];
@@ -94,11 +128,20 @@ export default function MCPMemoryChatbot({ isOpen, setIsOpen }) {
               loading: false,
               text: memories.length > 0
                 ? `Found **${memories.length} relevant memory matches** in CockroachDB distributed vector index for "${text.trim()}":`
-                : `No exact vector matches found for "${text.trim()}". Standard rule-based fallback active.`,
+                : `No exact vector matches found for "${text.trim()}".`,
               memories,
-              synthesis: memories.length > 0
-                ? `CockroachDB MCP vector search indicates high similarity to past thermal events. Applying evaporative liquid cooling strategy is predicted to save ~17.8% cooling water.`
-                : null,
+              retrieval: {
+                incidents: {
+                  method: incidentBlock.retrieval_method,
+                  model: incidentBlock.embedding_model,
+                  searched: incidentBlock.searched_records,
+                },
+                recommendations: {
+                  method: recommendationBlock.retrieval_method,
+                  model: recommendationBlock.embedding_model,
+                  searched: recommendationBlock.searched_records,
+                },
+              },
             };
           }
           return msg;
@@ -113,24 +156,8 @@ export default function MCPMemoryChatbot({ isOpen, setIsOpen }) {
               ...msg,
               loading: false,
               error: true,
-              text: "Could not reach CockroachDB MCP Memory backend. Showing cached demo matches:",
-              memories: [
-                {
-                  memory_id: "Incident #182",
-                  type: "incident",
-                  summary_text: "High GPU temperature at 38°C ambient - Hybrid Cooling applied",
-                  root_cause: "High ambient temperature combined with peak AI matrix multiplication workload",
-                  similarity: 0.96,
-                },
-                {
-                  memory_id: "Recommendation #94",
-                  type: "recommendation",
-                  summary_text: "Deploy Hybrid Evaporative Liquid Cooling across GPU Cluster (Rack 1-100)",
-                  expected_water_saving: 17.8,
-                  similarity: 0.92,
-                },
-              ],
-              synthesis: "Retrieved 2 cached CockroachDB vector matches with high similarity (>92%).",
+              text: `Could not reach CockroachDB MCP Memory backend for "${text.trim()}". Please check the connection and try again.`,
+              memories: [],
             };
           }
           return msg;
@@ -242,9 +269,8 @@ export default function MCPMemoryChatbot({ isOpen, setIsOpen }) {
                 {messages.map((msg) => (
                   <div
                     key={msg.id}
-                    className={`flex flex-col ${
-                      msg.sender === "user" ? "items-end" : "items-start"
-                    }`}
+                    className={`flex flex-col ${msg.sender === "user" ? "items-end" : "items-start"
+                      }`}
                   >
                     {/* Sender label & time */}
                     <div className="flex items-center gap-1.5 text-[10px] font-mono text-mist mb-1 px-1">
@@ -261,11 +287,12 @@ export default function MCPMemoryChatbot({ isOpen, setIsOpen }) {
 
                     {/* Bubble */}
                     <div
-                      className={`max-w-[92%] rounded-2xl px-4 py-3 border ${
-                        msg.sender === "user"
+                      className={`max-w-[92%] rounded-2xl px-4 py-3 border ${msg.sender === "user"
                           ? "bg-coolant/20 border-coolant/40 text-frost rounded-tr-none"
-                          : "bg-hall-2/80 border-rack-2 text-fog rounded-tl-none"
-                      }`}
+                          : msg.error
+                            ? "bg-red-500/10 border-red-500/40 text-fog rounded-tl-none"
+                            : "bg-hall-2/80 border-rack-2 text-fog rounded-tl-none"
+                        }`}
                     >
                       <p className="whitespace-pre-wrap leading-relaxed text-xs md:text-sm">
                         {msg.text}
@@ -285,6 +312,26 @@ export default function MCPMemoryChatbot({ isOpen, setIsOpen }) {
                         </div>
                       )}
 
+                      {/* Retrieval method badges -- honest about vector vs fallback */}
+                      {msg.retrieval && (msg.retrieval.incidents?.method || msg.retrieval.recommendations?.method) && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {msg.retrieval.incidents?.method && (
+                            <RetrievalBadge
+                              method={msg.retrieval.incidents.method}
+                              embeddingModel={msg.retrieval.incidents.model}
+                              searchedRecords={msg.retrieval.incidents.searched}
+                            />
+                          )}
+                          {msg.retrieval.recommendations?.method && (
+                            <RetrievalBadge
+                              method={msg.retrieval.recommendations.method}
+                              embeddingModel={msg.retrieval.recommendations.model}
+                              searchedRecords={msg.retrieval.recommendations.searched}
+                            />
+                          )}
+                        </div>
+                      )}
+
                       {/* Vector Search Memory Results Cards */}
                       {msg.memories && msg.memories.length > 0 && (
                         <div className="mt-3 space-y-2">
@@ -296,14 +343,29 @@ export default function MCPMemoryChatbot({ isOpen, setIsOpen }) {
                               <div className="flex items-center justify-between mb-1.5">
                                 <span className="font-mono text-[10px] uppercase font-bold text-flow flex items-center gap-1">
                                   <Database size={11} />
-                                  {m.memory_id || `Match #${idx + 1}`} ({m.type})
+                                  {m.memory_id ? m.memory_id.slice(0, 8) : `Match #${idx + 1}`} ({m.type})
                                 </span>
-                                <span className="font-mono text-[10px] text-signal font-semibold bg-signal/15 border border-signal/30 px-2 py-0.5 rounded-full">
-                                  {Math.round((m.similarity ?? 0.92) * 100)}% Match
+                                {/* FIX: similarity can be null (fallback_recent path) --
+                                    show "N/A" instead of a fabricated percentage */}
+                                <span
+                                  className={`font-mono text-[10px] font-semibold px-2 py-0.5 rounded-full border ${m.similarity == null
+                                      ? "text-mist bg-hall-3 border-rack-2"
+                                      : "text-signal bg-signal/15 border-signal/30"
+                                    }`}
+                                >
+                                  {m.similarity == null
+                                    ? "No similarity score"
+                                    : `${Math.round(m.similarity * 100)}% Match`}
                                 </span>
                               </div>
 
                               <p className="text-fog text-xs font-medium">{m.summary_text}</p>
+
+                              {m.severity && (
+                                <p className="text-[11px] text-mist mt-1 font-mono">
+                                  Severity: {m.severity}
+                                </p>
+                              )}
 
                               {m.root_cause && (
                                 <p className="text-[11px] text-amber/90 mt-1.5 font-mono">
@@ -311,23 +373,22 @@ export default function MCPMemoryChatbot({ isOpen, setIsOpen }) {
                                 </p>
                               )}
 
-                              {m.expected_water_saving && (
+                              {m.expected_water_saving != null && (
                                 <p className="text-[11px] text-signal mt-1 font-mono flex items-center gap-1">
                                   <Droplets size={11} /> Expected Water Saving: {m.expected_water_saving}%
+                                  {m.confidence != null && (
+                                    <span className="text-mist"> · Confidence: {Math.round(m.confidence * 100)}%</span>
+                                  )}
+                                </p>
+                              )}
+
+                              {m.created_at && (
+                                <p className="text-[10px] text-mist/70 mt-1.5 font-mono">
+                                  {new Date(m.created_at).toLocaleString()}
                                 </p>
                               )}
                             </div>
                           ))}
-                        </div>
-                      )}
-
-                      {/* Synthesis summary */}
-                      {msg.synthesis && (
-                        <div className="mt-3 p-3 rounded-xl bg-flow/10 border border-flow/30 text-xs text-frost font-mono leading-relaxed">
-                          <div className="flex items-center gap-1.5 text-flow font-semibold text-[11px] mb-1">
-                            <BrainCircuit size={13} /> MCP Synthesis & Recommendation
-                          </div>
-                          {msg.synthesis}
                         </div>
                       )}
 
