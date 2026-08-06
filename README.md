@@ -6,7 +6,7 @@
 [![CockroachDB](https://img.shields.io/badge/CockroachDB-6933FF?style=for-the-badge&logo=cockroachlabs&logoColor=white)](https://www.cockroachlabs.com/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-000000?style=for-the-badge&logo=langchain&logoColor=white)](https://langchain-ai.github.io/langgraph/)
 
-> **AquaRack** is an enterprise-grade Agentic Digital Twin platform designed to forecast thermal load, optimize cooling demand, and dramatically reduce cooling-water consumption (WUE) in high-density AI data centers.
+> **AquaRack** is an enterprise-grade Agentic Digital Twin platform designed to forecast thermal load, optimize cooling demand, and dramatically reduce cooling-water consumption (WUE) in high-density AI data centers — powered by CockroachDB as its persistent, distributed agent memory layer.
 
 ---
 
@@ -17,17 +17,33 @@
 
 ---
 
+## 🚨 The Problem We're Solving
+
+**AI data centers are consuming water at a catastrophic and invisible rate.**
+
+Every GPU cluster running large AI models generates enormous heat. That heat must be removed — and in most modern facilities, the primary method is evaporative cooling that consumes millions of litres of freshwater per year. The problem is threefold:
+
+1. **Cooling decisions are made blind.** Operators react to temperature alarms *after* a thermal event, not before. There is no system that watches an incoming workload's compute signature and pre-adjusts the cooling before heat builds.
+
+2. **Water usage is an afterthought.** While PUE (Power Usage Effectiveness) is widely tracked, WUE (Water Usage Effectiveness: litres per kWh) is almost never monitored in real-time at the rack level.
+
+3. **AI agents lack persistent, resilient memory.** As AI agents move into real production workflows — diagnosing incidents, optimizing systems — they need a memory layer that **never goes offline**. Traditional databases fail here: designed for human-scale reads and writes, they can't handle the autonomous, high-frequency writes of an agentic system. An agent whose memory goes down doesn't degrade gracefully — **it stops**.
+
+**AquaRack solves all three.** It is an agentic digital twin that watches your infrastructure's compute load in real time, calculates the thermodynamic water cost, retrieves past experiences from CockroachDB's distributed memory, and takes *closed-loop action* — throttling HVAC or migrating workloads — all autonomously.
+
+---
+
 ## 🏆 CockroachDB × AWS Hackathon Fulfillment
 
-This project is built explicitly for the CockroachDB × AWS Hackathon, demonstrating **CockroachDB as a production-ready, persistent memory layer for agentic systems.**
+This project is built explicitly for the CockroachDB × AWS Hackathon, demonstrating **CockroachDB as a production-ready, always-on persistent memory layer for agentic systems.**
 
 ### 🪳 CockroachDB Tools Used
-1. **CockroachDB Cloud Managed MCP Server**: The LangGraph agent connects directly to the CockroachDB cluster using the Managed MCP server. We expose critical memory tools (`retrieve_similar_incidents`, `store_agent_memory`, `ccloud_cluster_health`, and `retrieve_hvac_manual`) so the agent can safely read SOPs and write its reasoning outcomes back to the database.
-2. **CockroachDB Distributed Vector Indexing**: We use CockroachDB's native `VECTOR(dim)` type for our `Recommendation`, `Episode`, and `HVACManual` tables. The AI Decision Agent executes in-database semantic searches using the `<=>` cosine-distance operator to retrieve the most relevant historical incidents and HVAC operational manuals (RAG) in milliseconds—eliminating the need for a separate, disconnected vector store.
+1. **CockroachDB Cloud Managed MCP Server**: The LangGraph agent connects directly to CockroachDB clusters using the Managed MCP server (JSON-RPC 2.0). We expose critical memory tools — `retrieve_similar_incidents`, `store_agent_memory`, `ccloud_cluster_health`, and `retrieve_hvac_manual` — so the agent can safely read Standard Operating Procedures and write reasoning outcomes back to the database at every step of its pipeline.
+2. **CockroachDB Distributed Vector Indexing**: We use CockroachDB's native `VECTOR(dim)` type for our `Recommendation`, `Episode`, and `HVACManual` tables. The AI Decision Agent executes in-database semantic searches using the `<=>` cosine-distance operator to retrieve the most relevant historical incidents in milliseconds — eliminating the need for a separate, disconnected vector store.
 
 ### ☁️ AWS Services Used
-1. **Amazon Bedrock**: Integrated via LangChain to provide enterprise-grade, high-availability foundation models (Claude Sonnet 3.5) and embeddings (Amazon Titan) for our multi-agent workflow.
-2. **Amazon S3**: Utilised as a data lake for cold-tier storage. As the CockroachDB memory layer scales, older episodic traces and thermal reports are archived into S3 buckets.
+1. **Amazon Bedrock**: Integrated via LangChain to provide enterprise-grade, high-availability foundation models (Claude Sonnet 3.5) and embeddings (Amazon Titan) for our multi-agent workflow. Automatically falls back to Groq + Cohere if unavailable.
+2. **Amazon S3**: Used as a cold-tier data lake. As the CockroachDB memory layer scales, older episodic traces and thermal reports are archived to S3 (`s3://<bucket>/cold/...`).
 3. **AWS Lambda**: Scheduled serverless compute jobs that run asynchronously to pull fleet telemetry and trigger background reasoning loops.
 
 ### 🎥 Demo Video
@@ -35,61 +51,72 @@ This project is built explicitly for the CockroachDB × AWS Hackathon, demonstra
 
 ---
 
-## 🏗️ Enterprise Technology Stack & Deep Analysis
-
-AquaRack has been architected to leverage a modern, high-performance stack focusing on multi-agent workflows, in-database vector search, and interactive 3D frontend visualisations.
-
-### 1. AI, Reasoning & Multi-Agent Workflows
-- 🤖 **LangGraph Stateful Orchestration**: The AI pipeline is built on **LangGraph**, orchestrating a 5-stage state machine: `Monitor -> Predictor -> Optimizer -> Action -> Explainer`. 
-- 🦙 **Ollama (Qwen) with Groq Fallback**: Uses local Ollama inference (e.g., Qwen models) as the primary reasoning engine, with an automatic fallback mechanism to **Groq** cloud for high-availability inference.
-- 🛡️ **Guardrail Critic Pattern**: Implements a dedicated critic agent layer to evaluate and filter unsafe or inefficient optimization plans before they are committed to the data center action loop.
-- 📐 **Cohere & Hybrid Search**: Uses Cohere for high-dimensional embeddings and re-ranking, providing robust semantic search capabilities over episodic memories.
-
-### 2. Database, Storage & Vector Infrastructure
-- 🔌 **CockroachDB Managed MCP Server**: Connects AI agents directly to CockroachDB clusters via JSON-RPC 2.0. Exposed MCP tools include `retrieve_similar_incidents`, `store_agent_memory`, and `ccloud_cluster_health`.
-- 🧠 **Native Vector Indexing in CockroachDB**: Directly stores embeddings via the `VECTOR(dim)` type. Executes in-database similarity search via native `<=>` cosine-distance operators, eliminating the need for a separate vector database.
-- 📦 **AWS S3 Cold Storage**: Exports archived cold-tier episodic memories (`s3://<bucket>/<prefix>/...`) via CDC export jobs.
-
-
-### 3. Backend Engine & Thermodynamic Simulation
-- ⚡ **FastAPI & Psycopg 3**: High-performance asynchronous API tier and SSE streaming, interfacing with CockroachDB via SQLAlchemy 2.0 and the modern `psycopg` driver.
-- 💧 **CoolProp Thermodynamic Engine**: Translates digital twin telemetry into accurate physical water cooling demands, converting synthetic thermal loads (kW) into evaporative water consumption models using psychrometric equations.
-
-### 4. Interactive 3D Frontend
-- ⚛️ **React 19 & Vite 8**: Bleeding-edge frontend toolchain running the latest React framework for lightning-fast HMR and optimized production bundles.
-- 🎨 **TailwindCSS v4 & Framer Motion**: Provides a sleek, animated user interface built on Tailwind's new v4 engine.
-- 🧊 **React Three Fiber & Drei (WebGL)**: Powers the real-time interactive 3D digital twin dashboards, rendering custom shaders, server racks, and physical facility data flows inside the browser.
-- 📈 **Recharts**: Data visualisation library for charting water usage, WUE (Water Usage Effectiveness), and incident predictions over time.
-
----
-
-## 📸 System Architecture & Visual Overview
+## 📸 System Architecture
 
 ### Overall System Architecture
+*(Updated — no CloudWatch. Actuation layer, Operational RAG, and CockroachDB MCP Server all shown.)*
+
 ![Overall Architecture](frontend/public/overall%20architecture.png)
+
+### Agentic Memory Flow (LangGraph ↔ CockroachDB)
+![Agent Memory Flow](frontend/public/agent_memory_flow.png)
 
 ### End-to-End User & Agent Flow
 ![User Flow](frontend/public/user_flow.png)
 
 ---
 
-## ✨ Core Features Detailed
+## 🏗️ Enterprise Technology Stack
 
-- 🛰️ **Real-Time Telemetry Daemon**: Polls CPU, GPU, RAM, battery, and fan telemetry with automatic SQLite local buffer replay on network disconnects.
-- 🏢 **Digital Twin Engine**: Maps single-device compute load onto configurable multi-rack profiles, computing synthetic thermal kW loads without requiring physical data center hardware.
-- 💧 **Thermodynamic Water Model**: Converts thermal load into cooling demand (kW) and water consumption (litres/hour) using PUE, WUE, and psychrometric evaporation approximations powered by CoolProp.
-- 🤖 **Stateful Multi-Agent Reasoning**: Runs complex decision-making loops (Monitor -> Predictor -> Optimizer) fetching historical precedents before recommending water-saving adjustments.
-- 🖥️ **Interactive 3D Dashboard**: High-performance UI featuring physical rack visualizations, memory analysis charts, fleet-wide views, and live SSE observability logs.
-- 🛡️ **Zero Mandatory Cloud Dependency**: Built-in fallback to local inference and SQLite ensures offline functionality.
+AquaRack has been architected to leverage a modern, high-performance stack focusing on multi-agent workflows, in-database vector search, and interactive 3D frontend visualisations.
+
+### 1. AI, Reasoning & Multi-Agent Workflows
+- 🤖 **LangGraph Stateful Orchestration**: 5-stage state machine: `Monitor → Predictor → Optimizer → Action → Explainer`.
+- 🦙 **Ollama + Amazon Bedrock + Groq**: Layered LLM fallback chain for zero-downtime reasoning.
+- 🛡️ **Guardrail Critic Pattern**: Dedicated critic agent validates optimization plans before actuation.
+- 📐 **Cohere & Hybrid Search**: High-dimensional embeddings for episodic memory retrieval.
+- 🔁 **Closed-Loop Actuation**: Agent actively POSTs to `/actuation/hvac/throttle` and `/actuation/workload/migrate` to mutate real transactional state.
+- 📖 **Operational RAG**: Agent retrieves HVAC Standard Operating Procedures from CockroachDB's `hvac_manuals` table before deciding on a strategy.
+
+### 2. CockroachDB Memory Layer (Core Hackathon Feature)
+- 🔌 **Managed MCP Server**: Agents call memory tools via JSON-RPC 2.0 at every reasoning step.
+- 🧠 **Native Vector Indexing**: `VECTOR(1024)` columns on `incidents`, `recommendations`, `episodes`, and `hvac_manuals` tables with cosine similarity via `<=>` — **no separate vector database**.
+- 📦 **AWS S3 Cold Storage**: Exports archived episodic memories to S3 for long-term analysis.
+- 💾 **JobPlacement Table**: Tracks where compute workloads are running so the agent can migrate them to thermally-optimal racks.
+
+### 3. Backend Engine & Thermodynamic Simulation
+- ⚡ **FastAPI & Psycopg 3**: High-performance async API with SSE for live agent trace streaming.
+- 💧 **CoolProp Thermodynamic Engine**: Converts thermal kW loads into evaporative water consumption (L/hr) using psychrometric equations.
+
+### 4. Interactive 3D Frontend
+- ⚛️ **React 19 & Vite 8**: Modern frontend with live SSE reasoning console.
+- 🎨 **TailwindCSS v4 & Framer Motion**: Sleek animated UI.
+- 🧊 **React Three Fiber & Drei**: Real-time interactive 3D rack visualizations.
 
 ---
 
-## 🛠️ CockroachDB Managed MCP Tools Exposed
+## ✨ Core Features
 
-1. `retrieve_similar_incidents` — Retrieves past thermal/water incidents matching semantic query vector via CockroachDB vector search.
-2. `retrieve_similar_episodes` — Searches historical AI agent episodes and optimizations.
-3. `store_agent_memory` — Persists new events, recommendations, and outcomes back into CockroachDB vector memory.
-4. `ccloud_cluster_health` — Tooling for agents to inspect the live status of the CockroachDB Cloud cluster.
+- 🛰️ **Real-Time Telemetry Daemon**: 5-second polling with SQLite local buffer replay on disconnects.
+- 🏢 **Digital Twin Engine**: Maps single-device compute load onto synthetic rack profiles.
+- 💧 **Thermodynamic Water Model**: WUE + PUE + psychrometric equations → L/hr predictions.
+- 🤖 **LangGraph Multi-Agent Reasoning**: Retrieves historical precedents from CockroachDB before every decision.
+- 📖 **Operational RAG**: Agent reads HVAC SOPs from CockroachDB vector memory to inform strategy.
+- 🔁 **Closed-Loop Actuation**: Agent actively throttles HVAC or migrates workloads — not just recommends.
+- 🖥️ **Live SSE Reasoning Console**: Watch every agent thought stream in real-time in the dashboard UI.
+- 🛡️ **Zero Mandatory Cloud Dependency**: SQLite fallback + local inference for offline functionality.
+
+---
+
+## 🛠️ CockroachDB MCP Tools Exposed
+
+| Tool | Description |
+|------|-------------|
+| `retrieve_similar_incidents` | Retrieves past thermal/water incidents by semantic vector via CockroachDB `<=>` cosine search |
+| `retrieve_similar_episodes` | Searches historical agent episodes and optimization outcomes |
+| `store_agent_memory` | Persists new events, recommendations, and outcomes into CockroachDB vector memory |
+| `ccloud_cluster_health` | Allows agent to inspect live CockroachDB Cloud cluster status |
+| `retrieve_hvac_manual` | Operational RAG — retrieves HVAC SOP sections matching a semantic query |
 
 ---
 
@@ -97,13 +124,13 @@ AquaRack has been architected to leverage a modern, high-performance stack focus
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/v1/dashboard/summary` | Retrieve current telemetry, water models, and open incident counts |
-| `GET` | `/api/v1/telemetry/latest` | Retrieve current raw telemetry |
-| `GET` | `/api/v1/episodes/replay` | Retrieve resolved episodes for experience replay |
-| `GET` | `/api/v1/agent/trace/recent`| Fetch reasoning trace events (polling fallback) |
-| `POST` | `/api/reason` | Execute LangGraph Multi-Agent reasoning pipeline |
-| `POST` | `/api/memory/search` | Search CockroachDB vector index via MCP tools |
-| `POST` | `/mcp/rpc` | JSON-RPC 2.0 endpoint for CockroachDB Managed MCP Server |
+| `GET`  | `/api/v1/dashboard/summary`           | Current telemetry, water models, incident counts |
+| `GET`  | `/api/v1/agent/trace/stream`          | **Live SSE stream** of agent reasoning (used by dashboard console) |
+| `GET`  | `/api/v1/agent/trace/recent`          | Polling fallback for recent reasoning events |
+| `POST` | `/api/reason`                         | Execute full LangGraph Multi-Agent pipeline |
+| `POST` | `/api/v1/actuation/hvac/throttle`     | Closed-loop HVAC control (fan RPM + chiller setpoint) |
+| `POST` | `/api/v1/actuation/workload/migrate`  | Migrate compute workload to a cooler rack |
+| `POST` | `/mcp/rpc`                            | JSON-RPC 2.0 CockroachDB Managed MCP Server endpoint |
 
 ---
 
@@ -112,11 +139,10 @@ AquaRack has been architected to leverage a modern, high-performance stack focus
 ### Prerequisites
 - **Python**: `3.10+`
 - **Node.js**: `18+` & `npm`
-- **Database**: CockroachDB (Cloud cluster or local single-node)
+- **Database**: CockroachDB Cloud (free tier works)
 - **Ollama**: (Optional) For local model inference
 
-### 1. Database Setup (CockroachDB)
-Set your connection string in `.env`:
+### 1. Database Setup
 ```ini
 DATABASE_URL="cockroachdb+psycopg://user:password@host:26257/Rackpulse?sslmode=verify-full"
 ```
@@ -129,9 +155,10 @@ python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env
+# Seed HVAC Manuals for Operational RAG:
+python backend/scripts/seed_hvac_manuals.py
 python run.py
 ```
-Backend starts at `http://127.0.0.1:8000`.
 
 ### 3. Frontend Setup
 ```bash
@@ -139,7 +166,6 @@ cd frontend
 npm install
 npm run dev
 ```
-Frontend development server starts at `http://localhost:5173`.
 
 ---
 
