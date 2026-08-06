@@ -104,3 +104,22 @@ class StrategyScore(Base):
     confidence = Column(Float, default=0.5)
     last_used_at = Column(DateTime, default=datetime.utcnow)
 
+class JobPlacement(Base):
+    """Tracks workloads migrating between racks."""
+    __tablename__ = "job_placements"
+    job_id = Column(String, primary_key=True, default=_uuid)
+    rack_id = Column(String, ForeignKey("racks.rack_id"), nullable=False, index=True)
+    workload_type = Column(String, nullable=False) # e.g., "LLM Inference"
+    cpu_cores = Column(Integer, default=1)
+    gpu_count = Column(Integer, default=1)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class HVACManual(Base):
+    """Stores HVAC SOP documents and embeddings for Operational RAG."""
+    __tablename__ = "hvac_manuals"
+    manual_id = Column(String, primary_key=True, default=_uuid)
+    title = Column(String, nullable=False)
+    content = Column(String, nullable=False)
+    embedding = Column(JSON, nullable=True) # Will be mapped to VECTOR natively in setup
+    created_at = Column(DateTime, default=datetime.utcnow)

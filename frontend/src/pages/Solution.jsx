@@ -23,9 +23,9 @@ const stages = [
   },
   {
     icon: Thermometer,
-    title: "2. Digital Twin Engine",
+    title: "2. Agentic Digital Twin",
     tag: "FR-1.4",
-    body: "Maps single-device utilisation onto a configurable synthetic rack profile, producing a rack-equivalent utilisation and thermal load estimate — without needing real data-centre hardware.",
+    body: "Maps single-device utilisation onto a configurable synthetic rack profile, producing a rack-equivalent utilisation and thermal load estimate — allowing the agent to model environments virtually.",
   },
   {
     icon: Droplets,
@@ -35,21 +35,27 @@ const stages = [
   },
   {
     icon: Database,
-    title: "4. Memory Engine",
+    title: "4. CockroachDB Memory Engine",
     tag: "FR-1.6",
-    body: "Every significant event is summarised, embedded, and stored in CockroachDB with a retrievable vector index — the institutional memory the AI agent reasons over.",
+    body: "Every event is embedded and stored in CockroachDB. By utilizing Distributed Vector Indexing and a Managed MCP Server, semantic search stays fast and consistent with operational state.",
   },
   {
     icon: BrainCircuit,
-    title: "5. AI Decision Agent",
+    title: "5. LangGraph AI Agent & Operational RAG",
     tag: "FR-1.7",
-    body: "Retrieves the top-K most similar past memories via cosine similarity search, reasons over current state plus retrieved context, and produces a natural-language recommendation with a confidence score and cited memory IDs.",
+    body: "A stateful multi-agent orchestrator reasons over current state and retrieves Standard Operating Procedures (SOPs) from CockroachDB to produce cooling recommendations.",
+  },
+  {
+    icon: CheckCircle2,
+    title: "6. Closed-Loop Actuation & Migration",
+    tag: "FR-1.8",
+    body: "The agent actively mutates transactional state by executing real HTTP requests to throttle HVAC systems or migrate compute workloads to cooler racks to balance thermal load.",
   },
 ];
 
 const principles = [
-  "Unified data contracts, standardized API shapes, and distributed database schemas engineered for seamless scale.",
-  "Zero mandatory cloud dependency: SQLite fallback, local Ollama daemon or fallback rules, single-node CockroachDB free tier.",
+  "CockroachDB acts as the true system of record for agentic memory—globally distributed, persistent, and seamlessly integrated through an MCP server.",
+  "AWS Cloud Native: Deployed utilizing Amazon S3 for artifact archiving and AWS Lambda for serverless background jobs.",
   "Every recommendation is explainable — it stores exactly which memories it was grounded in.",
   "Model outputs are sanity-checked against published industry WUE benchmarks (0.5–2.0 L/kWh) as an automated test.",
 ];

@@ -5,9 +5,10 @@ import { ArrowUpRightIcon } from "./ui/icons";
 
 const links = [
   { to: "/", label: "Home", end: true },
-  { to: "/problem", label: "Problem" },
-  { to: "/solution", label: "Solution" },
   { to: "/dashboard", label: "Dashboard" },
+  { to: "/memory", label: "Memory" },
+  { to: "/compare", label: "Benchmark" },
+  { to: "/fleet", label: "Fleet" },
   { to: "/about", label: "About" },
 ];
 

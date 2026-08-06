@@ -29,15 +29,15 @@ const capabilities = [
   },
   {
     icon: MovieIcon,
-    tags: ["Water Model", "WUE", "Memory Engine", "Retrieval"],
     title: "Reason",
-    body: "Thermal load is converted into cooling demand and litres-per-hour, then embedded alongside every past event for retrieval-augmented reasoning.",
+    tags: ["CockroachDB", "Vector Search", "Memory Engine", "AWS RAG"],
+    body: "The agent retrieves past incidents and HVAC SOPs from CockroachDB's persistent memory, reasoning over them in a LangGraph workflow.",
   },
   {
     icon: LightbulbIcon,
-    tags: ["AI Agent", "Explainable", "Auditable", "Fleet-Ready"],
-    title: "Decide",
-    body: "The decision agent retrieves similar past incidents and recommends an action — with the exact memories it was grounded in stored for audit.",
+    title: "Actuate",
+    tags: ["Agentic Action", "Workload Migration", "HVAC Control"],
+    body: "The agent doesn't just recommend—it actively mutates database state to throttle cooling or migrate workloads across racks.",
   },
 ];
 
@@ -62,7 +62,7 @@ export default function Home() {
                 New
               </span>
               <span className="text-sm font-body text-white/90">
-                Enterprise-ready AI Data Center Digital Twin
+                Agentic Digital Twin on CockroachDB & AWS
               </span>
             </motion.div>
 

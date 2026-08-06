@@ -3,37 +3,24 @@ import axios from "axios";
 /**
  * AquaMind AI API client.
  *
- * Talks to the Phase 1 FastAPI monolith (SDD Section 10 — /api/v1/*)
- * Same shared schemas/data contracts carry into Phase 2's distributed
- * services (SDD Phase 2, Section on gateway routing), so this client
- * does not need to change when the backend topology changes — only
- * VITE_API_BASE_URL does.
- *
+ * Talks to the FastAPI monolith (SDD Section 10 — /api/v1/*).
  * Dev: vite.config.js proxies /api -> http://127.0.0.1:8000
- * Prod: set VITE_API_BASE_URL to the deployed API origin (see .env.example)
- *
- * Two axios instances:
- *   api        — 10 s timeout for fast polling endpoints (telemetry, dashboard, etc.)
- *   reasonApi  — 60 s timeout for /api/reason which runs the full multi-agent
- *                pipeline (MCP retrieval + Bedrock + fallback). The pipeline
- *                completes in ~6-15 s even when Bedrock falls back to rules.
+ * Prod: set VITE_API_BASE_URL to the deployed API origin
  */
-const baseURL = import.meta.env.VITE_API_BASE_URL || "";
+const baseURL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
 
 export const api = axios.create({
   baseURL,
   timeout: 10000,
 });
 
-// Dedicated instance for slow agentic endpoints — avoids the 10 s global cap
-// triggering on the multi-agent reasoning pipeline (SDD FR-1.11 fallback adds
-// latency even when Bedrock is unreachable).
+// Dedicated instance for slow agentic endpoints (multi-agent pipeline via Ollama/Groq)
 export const reasonApi = axios.create({
   baseURL,
-  timeout: 60000,
+  timeout: 120000,
 });
 
-// Optional local bearer token support (SDD Section 17.1 — Phase 1 auth)
+// Optional local bearer token support
 const token = import.meta.env.VITE_API_TOKEN;
 if (token) {
   api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
@@ -52,7 +39,7 @@ export const getLatestTelemetry = () =>
 export const postTelemetry = (reading) =>
   api.post("/api/v1/telemetry", reading).then((r) => r.data);
 
-/** POST /api/v1/simulate ({ telemetry_id? }) -> { utilisation, thermal_load_kw, power_draw_kw, water_model } */
+/** POST /api/v1/simulate ({ telemetry_id? }) -> { utilisation, thermal_load_kw, ... } */
 export const postSimulate = (telemetry_id) =>
   api.post("/api/v1/simulate", { telemetry_id }).then((r) => r.data);
 
@@ -82,17 +69,20 @@ export const downloadDailyReport = (format = "csv") =>
 export const getEnterpriseDashboard = () =>
   api.get("/api/dashboard").then((r) => r.data);
 
-/**
- * POST /api/reason — runs the full multi-agent pipeline.
- * Uses reasonApi (60 s) because the pipeline involves:
- *   MCP memory retrieval → Bedrock Converse → rules fallback → DB writes
- * which can take 6–15 s even on a warm path.
- */
+/** POST /api/reason — runs the full multi-agent pipeline via Ollama/Groq with fallback to /api/v1/recommend. */
 export const postReason = (telemetry_id) =>
-  reasonApi.post("/api/reason", { telemetry_id }).then((r) => r.data);
+  reasonApi
+    .post("/api/reason", { telemetry_id })
+    .catch((err) => {
+      if (err.response && err.response.status === 404) {
+        return reasonApi.post("/api/v1/recommend", { telemetry_id });
+      }
+      throw err;
+    })
+    .then((r) => r.data);
 
 export const postMemorySearch = (query, k = 5, memory_type = null) =>
-  api.post("/api/memory/search", { query, k, memory_type }).then((r) => r.data);
+  reasonApi.post("/api/memory/search", { query, k, memory_type }).then((r) => r.data);
 
 export const getIncidents = (severity = null, limit = 20) =>
   api.get("/api/incidents", { params: { severity, limit } }).then((r) => r.data);
@@ -100,5 +90,18 @@ export const getIncidents = (severity = null, limit = 20) =>
 export const getRecommendations = (limit = 20) =>
   api.get("/api/recommendations", { params: { limit } }).then((r) => r.data);
 
-export default api;
+// ─── New Memory Architecture APIs (Tasks 4-7) ───────────────────────
 
+/** GET /api/v1/episodes/replay -> Episode[] — resolved episodes for experience replay */
+export const getEpisodesReplay = (params = {}) =>
+  api.get("/api/v1/episodes/replay", { params }).then((r) => r.data);
+
+/** GET /api/v1/fleet/summary -> fleet-wide rack stats */
+export const getFleetSummary = () =>
+  api.get("/api/v1/fleet/summary").then((r) => r.data);
+
+/** GET /api/v1/agent/trace/recent -> ReasoningEvent[] (REST polling fallback) */
+export const getRecentTraces = (run_id = null, limit = 200) =>
+  api.get("/api/v1/agent/trace/recent", { params: { run_id, limit } }).then((r) => r.data);
+
+export default api;

@@ -169,6 +169,16 @@ def optimizer_node(state: AgentState) -> AgentState:
         ]
         episode_note = f"\nSimilar past episodes: {'; '.join(ep_strs)}."
 
+    # Operational RAG: HVAC Manuals
+    manual_note = ""
+    try:
+        from app.mcp.tools import retrieve_hvac_manual
+        manuals = retrieve_hvac_manual(db, f"How to resolve {risks.get('primary_risk', 'high temps')}?", k=1)
+        if manuals:
+            manual_note = f"\nRelevant HVAC SOP '{manuals[0]['title']}': {manuals[0]['content']}"
+    except Exception as e:
+        logger.debug("Operational RAG skipped: %s", e)
+
     system_prompt = (
         "You are the Cooling & Power Optimizer Agent.\n"
         "Propose TWO candidate strategies and select the best one.\n"
@@ -185,6 +195,7 @@ def optimizer_node(state: AgentState) -> AgentState:
         f"Current Cooling: {water.get('cooling_load_kw')}kW, WUE Factor: {water.get('wue_factor', 0.4)}.\n"
         + (f"{strategy_prior_note}\n" if strategy_prior_note else "")
         + episode_note
+        + manual_note
     )
 
     llm_confidence = 0.88
@@ -257,6 +268,31 @@ def action_node(state: AgentState) -> AgentState:
     passed = critic_res.get("passed", True)
     final_conf = opt["confidence"] if passed else critic_res.get("confidence_adjusted", 0.5)
 
+    # Simulated Closed-Loop Actuation
+    actuation_result = None
+    if passed:
+        import requests
+        try:
+            rec = opt["recommendation"].lower()
+            if "migrate" in rec or "workload" in rec:
+                act_resp = requests.post("http://127.0.0.1:8000/api/v1/actuation/workload/migrate", json={
+                    "source_rack_id": twin.get("rack_id", "RACK-1"),
+                    "target_rack_id": "RACK-2",
+                    "workload_type": "LLM Inference"
+                }, timeout=5)
+                actuation_result = act_resp.json()
+            else:
+                act_resp = requests.post("http://127.0.0.1:8000/api/v1/actuation/hvac/throttle", json={
+                    "rack_id": twin.get("rack_id", "RACK-1"),
+                    "target_fan_speed_rpm": 2800.0,
+                    "target_chiller_setpoint_c": 19.5
+                }, timeout=5)
+                actuation_result = act_resp.json()
+            logger.info("Closed-Loop Actuation executed: %s", actuation_result)
+        except Exception as act_exc:
+            logger.error("Closed-Loop Actuation failed: %s", act_exc)
+            actuation_result = {"error": str(act_exc)}
+
     # Persist agent memory via MCP tool
     stored_mem = {}
     if db:
@@ -265,12 +301,17 @@ def action_node(state: AgentState) -> AgentState:
             stored_mem = store_agent_memory(db, memory_type="recommendation", source_id=run_id, summary=summary)
         except Exception as exc:
             logger.warning("ActionAgent memory persistence failed: %s", exc)
+            try:
+                db.rollback()
+            except Exception:
+                pass
 
     action_result = {
         "cluster_health": cluster_status,
         "guardrail_passed": passed,
         "final_confidence": final_conf,
         "stored_memory": stored_mem,
+        "actuation_result": actuation_result,
     }
 
     state["action_result"] = action_result
@@ -293,12 +334,20 @@ def reflect_node(state: AgentState) -> AgentState:
 
     try:
         from app.models_ext import Episode
+        from app import models
         import uuid as _uuid
+
+        rec_id = act.get("stored_memory", {}).get("id")
+        if rec_id and db:
+            # Validate rec_id actually exists in recommendations table to avoid FK violation
+            if not db.get(models.Recommendation, rec_id):
+                rec_id = None
+
         ep = Episode(
             episode_id=str(_uuid.uuid4()),
             run_id=run_id,
             rack_id=twin.get("rack_id"),
-            recommendation_id=act.get("stored_memory", {}).get("id"),
+            recommendation_id=rec_id,
             telemetry_snapshot={
                 k: twin.get(k)
                 for k in ["cpu_pct", "gpu_pct", "gpu_temp", "ram_pct", "utilisation_pct", "thermal_load_kw"]
@@ -322,6 +371,8 @@ def reflect_node(state: AgentState) -> AgentState:
         })
         state["agent_trace"].append({"agent": "ReflectAgent", "episode_id": ep.episode_id})
     except Exception as exc:
+        if db:
+            db.rollback()
         logger.warning("ReflectAgent episode creation failed: %s", exc)
 
     return state

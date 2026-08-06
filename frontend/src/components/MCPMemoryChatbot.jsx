@@ -118,17 +118,27 @@ export default function MCPMemoryChatbot({ isOpen, setIsOpen }) {
         created_at: r.created_at,
       }));
 
-      const memories = [...incidents, ...recs];
+      const rawMemories = [...incidents, ...recs];
+      const seen = new Set();
+      const memories = rawMemories.filter((m) => {
+        const key = (m.summary_text || "").toLowerCase().slice(0, 50);
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
 
       setMessages((prev) =>
         prev.map((msg) => {
           if (msg.id === loadingBotMsgId) {
+            const ragAnswer = res.rag_answer || (memories.length > 0
+              ? `Found **${memories.length} relevant database matches** in CockroachDB for "${text.trim()}":`
+              : `No exact vector matches found for "${text.trim()}".`);
             return {
               ...msg,
               loading: false,
-              text: memories.length > 0
-                ? `Found **${memories.length} relevant memory matches** in CockroachDB distributed vector index for "${text.trim()}":`
-                : `No exact vector matches found for "${text.trim()}".`,
+              text: ragAnswer,
+              rag_answer: res.rag_answer,
+              evidence: res.evidence || [],
               memories,
               retrieval: {
                 incidents: {

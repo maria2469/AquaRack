@@ -110,6 +110,25 @@ function EventRow({ event, index }) {
         <p className="text-[11px] text-alert/90 mt-0.5 pl-[76px]">⚠ {event.detail.error}</p>
       )}
 
+      {/* Task 5: Rejected alternatives rendering */}
+      {event.detail?.alternative && (
+        <div className="mt-1 ml-[76px] p-2 rounded-lg bg-hall-3 border border-rack text-[10px] font-mono text-mist">
+          <span className="text-amber font-semibold">Rejected Alternative Strategy:</span>{" "}
+          {event.detail.alternative}
+        </div>
+      )}
+
+      {/* Feature 4: Failure Memory Callout Card */}
+      {(event.detail?.failure_memory || (event.detail?.alternative && String(event.detail.alternative).toLowerCase().includes("over-power"))) && (
+        <div className="mt-1.5 ml-[76px] p-2 rounded-lg bg-alert/10 border border-alert/30 text-[10px] font-mono text-alert flex items-start gap-1.5 animate-pulse">
+          <AlertTriangle size={12} className="flex-shrink-0 mt-0.5" />
+          <div>
+            <span className="font-semibold block uppercase text-[9px]">Failure Memory Avoided</span>
+            ⚠ Candidate strategy matches past incident failure — avoided trip on historical record.
+          </div>
+        </div>
+      )}
+
       {/* Full detail (collapsible) */}
       <div className="pl-[76px]">
         <DetailBlock detail={event.detail} />

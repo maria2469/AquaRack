@@ -22,6 +22,7 @@ htmlcov/
 venv/
 env/
 ENV/
+.env.production
 
 # Local Databases & Storage
 *.db

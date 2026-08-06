@@ -81,3 +81,25 @@ timestamp,device_id,cpu_pct,gpu_pct,ram_pct,cooling_load_kw,wue_factor,water_l_p
 2026-08-06T13:58:47.844806,opendc-rack-2-40d9ae,92.05840196916661,,89.52073131400849,28.2312,1.008,20.0013,,
 2026-08-06T13:58:48.698000,test-laptop,93.0,,88.0,4.1632,1.008,2.9496,"Recommendation: Increase liquid cooling flow by 10% to prevent thermal overhead spike. (Confidence: 0.55, Rationale: Rules fallback: steady cooling increase for safe operation.). Validated by Guardrail Critic (ADJUSTED).",0.55
 2026-08-06T13:58:52.955762,test-laptop,98.0,95.0,90.0,4.3452,1.008,3.0785,"Recommendation: Increase liquid cooling flow by 10% to prevent thermal overhead spike. (Confidence: 0.55, Rationale: Rules fallback: steady cooling increase for safe operation.). Validated by Guardrail Critic (ADJUSTED).",0.55
+2026-08-06T14:49:20.695423,device-test,45.0,,60.0,,,,,
+2026-08-06T14:49:26.219959,edge-01,40.0,,35.0,,,,,
+2026-08-06T14:49:26.220221,edge-02,55.0,,50.0,,,,,
+2026-08-06T14:49:26.479777,opendc-rack-1-4322a5,87.63599152989498,,81.57724003888468,24.9903,1.008,17.7051,,
+2026-08-06T14:49:26.950934,opendc-rack-1-4322a5,85.77775628170751,,84.08121839486476,24.8303,1.008,17.5917,,
+2026-08-06T14:49:27.398387,opendc-rack-1-4322a5,89.98646205628549,,86.97724616085077,25.9412,1.008,18.3788,,
+2026-08-06T14:49:27.906480,opendc-rack-2-4322a5,89.35649402378984,,82.52007510564069,26.4517,1.008,18.7405,,
+2026-08-06T14:49:28.441165,opendc-rack-2-4322a5,86.44162018559983,,79.5917190575024,25.5672,1.008,18.1139,,
+2026-08-06T14:49:28.466929,opendc-rack-2-4322a5,92.62403104352933,,83.31120038466022,27.2166,1.008,19.2824,,
+2026-08-06T14:49:29.012326,test-laptop,93.0,,88.0,4.1632,1.008,2.9496,"Recommendation: Increase liquid cooling flow by 10% to prevent thermal overhead spike. (Confidence: 0.30, Rationale: Rules fallback: steady cooling increase for safe operation. [StrategyScore blended: 0.50]). Validated by Guardrail Critic (ADJUSTED).",0.3
+2026-08-06T14:49:34.477398,test-laptop,98.0,95.0,90.0,4.3452,1.008,3.0785,"Recommendation: Increase liquid cooling flow by 10% to prevent thermal overhead spike. (Confidence: 0.30, Rationale: Rules fallback: steady cooling increase for safe operation. [StrategyScore blended: 0.50]). Validated by Guardrail Critic (ADJUSTED).",0.3
+2026-08-06T14:58:50.637202,device-test,45.0,,60.0,,,,,
+2026-08-06T14:58:51.588192,edge-01,40.0,,35.0,,,,,
+2026-08-06T14:58:51.588283,edge-02,55.0,,50.0,,,,,
+2026-08-06T14:58:51.732575,opendc-rack-1-585fb4,95.23808403562961,,89.45363848521399,27.228,1.008,19.2905,,
+2026-08-06T14:58:52.148814,opendc-rack-1-585fb4,87.40933224065044,,85.11093649339684,25.2528,1.008,17.8911,,
+2026-08-06T14:58:52.901932,opendc-rack-1-585fb4,89.34273339158129,,84.90247151860929,25.6287,1.008,18.1574,,
+2026-08-06T14:58:53.386197,opendc-rack-2-585fb4,100.0,,87.4781465649834,29.4154,1.008,20.8402,,
+2026-08-06T14:58:53.895795,opendc-rack-2-585fb4,100.0,,82.33584425560758,28.9439,1.008,20.5061,,
+2026-08-06T14:58:54.521555,opendc-rack-2-585fb4,100.0,,81.39957571827352,28.8581,1.008,20.4454,,
+2026-08-06T14:58:55.315671,test-laptop,93.0,,88.0,4.1632,1.008,2.9496,"Recommendation: Increase liquid cooling flow by 10% to prevent thermal overhead spike. (Confidence: 0.30, Rationale: Rules fallback: steady cooling increase for safe operation. [StrategyScore blended: 0.50]). Validated by Guardrail Critic (ADJUSTED).",0.3
+2026-08-06T14:59:00.042992,test-laptop,98.0,95.0,90.0,4.3452,1.008,3.0785,"Recommendation: Increase liquid cooling flow by 10% to prevent thermal overhead spike. (Confidence: 0.30, Rationale: Rules fallback: steady cooling increase for safe operation. [StrategyScore blended: 0.50]). Validated by Guardrail Critic (ADJUSTED).",0.3

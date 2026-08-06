@@ -29,8 +29,8 @@ const painPoints = [
   },
   {
     icon: Wrench,
-    title: "No institutional memory",
-    body: "The same thermal incident gets re-diagnosed from scratch every time, because past decisions and their outcomes aren't retrievable.",
+    title: "Agents lack persistent memory",
+    body: "AI agents are moving into production workflows, but when their memory goes offline, they don't degrade gracefully—they stop. They need a system of record that never goes down.",
   },
 ];
 
@@ -173,10 +173,7 @@ export default function Problem() {
             variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }}
             className="text-mist text-lg md:text-xl leading-relaxed mb-8"
           >
-            The gap isn't a lack of sensors. It's that thermal telemetry, water
-            physics, and institutional memory of past incidents all live in
-            different places — and nothing reasons across all three, live,
-            before a decision is made.
+            The gap isn't a lack of sensors. It's that agentic systems are different: they spawn autonomously, write constantly, and require memory that persists across regions and failures. CockroachDB was built for exactly this.
           </motion.p>
           <motion.div
             variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }} custom={1}

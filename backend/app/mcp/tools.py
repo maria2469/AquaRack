@@ -318,3 +318,50 @@ def retrieve_similar_episodes(
             })
 
     return results
+
+
+def retrieve_hvac_manual(db: Session, query_text: str, k: int = 2) -> List[Dict[str, Any]]:
+    """MCP Tool: Operational RAG. Retrieve HVAC manual sections using vector search."""
+    logger.info("MCP Tool Executed: retrieve_hvac_manual(query='%s', k=%d)", query_text, k)
+    
+    from app.models_ext import HVACManual
+    from app.lib.embedder import embed_text
+    from app.database import IS_COCKROACHDB
+
+    query_vec = embed_text(query_text)
+    if not query_vec:
+        return []
+
+    results = []
+    
+    if IS_COCKROACHDB:
+        try:
+            # We assume embedding column was added as VECTOR, but for fallback we just use in-memory dot product
+            # if native vector is not set up perfectly for the hackathon demo.
+            # We'll just do Python-side dot product for guaranteed safety in the hackathon unless there's many rows.
+            pass
+        except Exception:
+            pass
+
+    # Simple in-memory cosine similarity fallback (since manuals are small)
+    manuals = db.query(HVACManual).all()
+    scored = []
+    for manual in manuals:
+        if not manual.embedding:
+            continue
+        try:
+            dot = sum(a * b for a, b in zip(query_vec, manual.embedding))
+            scored.append((dot, manual))
+        except Exception:
+            continue
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    for sim, manual in scored[:k]:
+        results.append({
+            "manual_id": manual.manual_id,
+            "title": manual.title,
+            "content": manual.content,
+            "similarity": round(sim, 4),
+        })
+
+    return results

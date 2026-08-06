@@ -22,7 +22,7 @@ import MCPMemoryChatbot from "../components/MCPMemoryChatbot";
 function ConnectionBadge({ status }) {
   const map = {
     connecting: { icon: RefreshCw, text: "Connecting…", cls: "text-mist border-rack-2 bg-hall-2" },
-    live: { icon: Wifi, text: "Live — CockroachDB MCP & Bedrock Connected", cls: "text-signal border-signal/30 bg-signal/10" },
+    live: { icon: Wifi, text: "Live — CockroachDB + Ollama Connected", cls: "text-signal border-signal/30 bg-signal/10" },
     mock: { icon: WifiOff, text: "Demo mode — synthetic stream", cls: "text-amber border-amber/30 bg-amber/10" },
     error: { icon: AlertCircle, text: "Backend unreachable — showing demo stream", cls: "text-alert border-alert/30 bg-alert/10" },
   };
@@ -216,7 +216,7 @@ export default function Dashboard() {
               <h2 className="font-heading font-semibold text-frost text-lg">Export Operational Report</h2>
             </div>
             <p className="text-sm text-mist leading-relaxed">
-              Export telemetry logs, thermodynamic water calculations, and Amazon Bedrock agent recommendations as downloadable reports.
+              Export telemetry logs, thermodynamic water calculations, and Ollama multi-agent recommendations as downloadable reports.
             </p>
           </div>
           <div className="flex items-center gap-3 flex-shrink-0">

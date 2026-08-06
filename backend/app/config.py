@@ -87,11 +87,6 @@ class Settings(BaseSettings):
     LAMBDA_RETIER_SCHEDULE: str = "rate(1 hour)"
 
     # ==========================================================
-    # CLOUDWATCH
-    # ==========================================================
-    CLOUDWATCH_ENABLED: bool = False
-    CLOUDWATCH_LOG_GROUP: str = "/aquamind/reasoning"
-    CLOUDWATCH_LOG_STREAM: str = os.getenv("AQUARACK_DEVICE_ID", "rack-01-primary")
 
     # ==========================================================
     # COLLECTOR

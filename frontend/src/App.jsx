@@ -6,6 +6,9 @@ import Home from "./pages/Home";
 import Problem from "./pages/Problem";
 import Solution from "./pages/Solution";
 import Dashboard from "./pages/Dashboard";
+import MemoryDashboard from "./pages/MemoryDashboard";
+import CompareMemoryDemo from "./pages/CompareMemoryDemo";
+import FleetView from "./pages/FleetView";
 import About from "./pages/About";
 
 function ScrollToTop() {
@@ -36,6 +39,9 @@ export default function App() {
           <Route path="/problem" element={<Problem />} />
           <Route path="/solution" element={<Solution />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/memory" element={<MemoryDashboard />} />
+          <Route path="/compare" element={<CompareMemoryDemo />} />
+          <Route path="/fleet" element={<FleetView />} />
           <Route path="/about" element={<About />} />
           <Route
             path="*"

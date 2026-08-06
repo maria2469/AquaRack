@@ -57,6 +57,7 @@ from app.routers import (
     reports,
     agent_trace,
     enterprise_api,
+    actuation,
 )
 from app.mcp import server as mcp_server
 from app.collector.run_collector import run as run_collector
@@ -77,13 +78,14 @@ app = FastAPI(
         "multi-agent AI decision system over CockroachDB Managed MCP, CockroachDB "
         "Vector Indexing, and Ollama (Llama 3.1 / Qwen2.5)."
     ),
+    redirect_slashes=True,
 )
 
 # FIX: regex covers any Vercel preview/branch deployment for this project
 # (e.g. https://aqua-rack-git-main-marias-projects-76dd7319.vercel.app),
 # not just the single production URL. Adjust the team/project slug pattern
 # below if your Vercel team or project name ever changes.
-ALLOWED_ORIGIN_REGEX = r"^https://aqua-rack(-git-[a-z0-9\-]+)?(-[a-z0-9]+)?\.vercel\.app$"
+ALLOWED_ORIGIN_REGEX = r"^https://aqua-rack(-[a-zA-Z0-9\-]+)?\.vercel\.app$"
 
 app.add_middleware(
     CORSMiddleware,
@@ -184,6 +186,7 @@ app.include_router(dashboard.router)
 app.include_router(reports.router)
 app.include_router(agent_trace.router)
 app.include_router(episodes.router)
+app.include_router(actuation.router)
 
 
 # --- Serve the dashboard (no Node/build step required) ---

@@ -58,28 +58,6 @@ if not reasoning_logger.handlers:
     _sh.setFormatter(_fmt)
     reasoning_logger.addHandler(_sh)
 
-    # Optional third handler: ships the same live reasoning trace to
-    # CloudWatch Logs. Purely additive — file + stdout handlers above are
-    # unaffected either way. Gated behind settings.CLOUDWATCH_ENABLED and
-    # wrapped defensively so a missing `watchtower` package, missing AWS
-    # credentials, or a permissions error never breaks agent execution;
-    # it just logs a warning locally and continues with file+stdout only.
-    if os.environ.get("AQUAMIND_SKIP_CLOUDWATCH") != "1":
-        try:
-            from app.config import settings
-
-            if settings.CLOUDWATCH_ENABLED:
-                import watchtower
-
-                _cw = watchtower.CloudWatchLogHandler(
-                    log_group=settings.CLOUDWATCH_LOG_GROUP,
-                    stream_name=settings.CLOUDWATCH_LOG_STREAM,
-                )
-                _cw.setFormatter(_fmt)
-                reasoning_logger.addHandler(_cw)
-        except Exception as _cw_exc:  # noqa: BLE001
-            reasoning_logger.warning(f"CloudWatch handler not attached: {_cw_exc}")
-
     reasoning_logger.propagate = False
 
 
