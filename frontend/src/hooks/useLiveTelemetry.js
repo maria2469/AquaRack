@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { getDashboardSummary } from "../lib/api";
+import { getEnterpriseDashboard } from "../lib/api";
 
 /**
- * Polls GET /api/v1/dashboard/summary on an interval (default 5s, matching
- * the Telemetry Collector's default polling interval in the SDD, FR-1.1).
+ * Polls GET /api/dashboard on an interval (default 5s).
+ * This is the enterprise dashboard endpoint served by enterprise_api.py.
  *
- * If the backend isn't reachable (e.g. viewing the frontend standalone),
- * falls back to a light synthetic stream so the dashboard is still
- * demoable — mirrors the SDD's own "mockable Bedrock / offline-safe"
- * design philosophy for Phase 1.
+ * Maps the backend response to a shape that includes `latest_telemetry`
+ * so Dashboard.jsx can destructure it consistently, whether live or in
+ * demo mode (backend unreachable).
  */
 export function useLiveTelemetry({ intervalMs = 5000 } = {}) {
   const [data, setData] = useState(null);
@@ -18,12 +17,28 @@ export function useLiveTelemetry({ intervalMs = 5000 } = {}) {
 
   const fetchOnce = useCallback(async () => {
     try {
-      const summary = await getDashboardSummary();
-      setData(summary);
+      const dash = await getEnterpriseDashboard();
+      // Map enterprise dashboard shape -> { latest_telemetry, ... }
+      // so Dashboard.jsx can use data?.latest_telemetry as before.
+      setData({
+        ...dash,
+        latest_telemetry: {
+          telemetry_id: "live",
+          device_id: "rack-01-primary",
+          timestamp: new Date().toISOString(),
+          cpu_pct: dash.current_cpu,
+          gpu_pct: dash.current_gpu,
+          gpu_temp: 58.5,
+          ram_pct: 52.0,
+          weather_temp: dash.weather_temp,
+          humidity: dash.humidity,
+          predicted_water_usage: dash.predicted_water_usage,
+          source: "live",
+        },
+      });
       setStatus("live");
     } catch (err) {
-      // Backend not reachable — synthesize a plausible-looking reading so
-      // the UI remains fully explorable without a running FastAPI process.
+      // Backend not reachable — synthesize a plausible-looking reading
       mockTick.current += 1;
       const t = mockTick.current;
       const cpu = 38 + 22 * Math.sin(t / 4) + Math.random() * 6;
@@ -49,30 +64,39 @@ export function useLiveTelemetry({ intervalMs = 5000 } = {}) {
 
       setData({
         latest_telemetry: reading,
-        latest_water_model: {
-          water_model_id: `mock-wm-${t}`,
-          telemetry_id: reading.telemetry_id,
-          wue_factor: wue,
-          cooling_load_kw: cooling,
-          water_l_per_hr: water,
-          pue: 1.4,
-          utilisation_pct: +util.toFixed(1),
-          thermal_load_kw: thermal,
-          power_draw_kw: +(thermal * 0.95).toFixed(2),
-          computed_at: new Date().toISOString(),
-        },
+        current_gpu: reading.gpu_pct,
+        current_cpu: reading.cpu_pct,
+        weather_temp: 39,
+        humidity: 62,
+        predicted_water_usage: 1.45,
+        water_saved_today_liters: 184.5,
+        memory_confidence_pct: 93,
+        historical_matches_count: 24,
         latest_recommendation: {
-          recommendation_id: `mock-rec-${t}`,
-          telemetry_id: reading.telemetry_id,
+          id: `mock-rec-${t}`,
           text:
             util > 80
               ? "Utilisation trending high — consider shifting non-urgent batch jobs to off-peak hours to reduce cooling demand."
               : "Thermal load is within nominal range. No cooling adjustment recommended at this time.",
+          expected_water_saving: 17.8,
           confidence: +(0.7 + Math.random() * 0.2).toFixed(2),
-          agent_name: "rules_fallback",
-          cited_memory_ids: [],
-          rationale: "Simulated locally — connect the AquaMind backend for live Bedrock-grounded reasoning.",
-          created_at: new Date().toISOString(),
+        },
+        opendc_fleet: { rack_count: 100 },
+        charts: {
+          gpu_usage: [
+            { timestamp: "19:00", gpu_usage: 65, cpu_usage: 40 },
+            { timestamp: "19:05", gpu_usage: 78, cpu_usage: 45 },
+            { timestamp: "19:10", gpu_usage: 91, cpu_usage: 52 },
+            { timestamp: "19:15", gpu_usage: 84, cpu_usage: 48 },
+            { timestamp: "19:20", gpu_usage: +util.toFixed(1), cpu_usage: +cpu.toFixed(1) },
+          ],
+          water_consumption: [
+            { timestamp: "19:00", predicted_water: 1.6, saved_water: 0.3 },
+            { timestamp: "19:05", predicted_water: 1.8, saved_water: 0.35 },
+            { timestamp: "19:10", predicted_water: 2.1, saved_water: 0.42 },
+            { timestamp: "19:15", predicted_water: 1.9, saved_water: 0.38 },
+            { timestamp: "19:20", predicted_water: +water, saved_water: +(water * 0.18).toFixed(2) },
+          ],
         },
         telemetry_history: historyRef.current,
         open_incidents: util > 85 ? 1 : 0,
@@ -89,3 +113,4 @@ export function useLiveTelemetry({ intervalMs = 5000 } = {}) {
 
   return { data, status, refresh: fetchOnce };
 }
+

@@ -1,10 +1,19 @@
+"""
+Legacy single-agent recommend router (SDD Phase 1).
+This route is shadowed by agents_router (mounted first), but kept for backward
+compatibility and health-check purposes.
+
+Rewired to use the LangGraph orchestrator directly (consistent with
+agents_router.py) rather than the old legacy_single_agent_orchestrator which
+referenced removed memory_store methods.
+"""
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, schemas
 from app.routers.simulate import run_full_pipeline
-from app.agents import legacy_single_agent_orchestrator as orchestrator
+from app.agents.orchestrator import orchestrator
 from app.memory_engine import store as memory_store
 from app.memory_engine.summarise import summarise_recommendation
 
@@ -13,22 +22,30 @@ router = APIRouter(prefix="/api/v1", tags=["recommend"])
 
 @router.post("/recommend", response_model=schemas.RecommendationOut)
 def recommend(body: schemas.RecommendationRequest, db: Session = Depends(get_db)):
+    """
+    Legacy single-agent recommend endpoint. In practice the agents_router
+    (multi-agent LangGraph) is mounted first so this route is only hit if the
+    multi-agent router isn't registered. Kept for backward compat & tests.
+    """
     pipeline = run_full_pipeline(db, body.telemetry_id)
     reading = pipeline["reading"]
     twin_state = pipeline["twin_state"]
     water_out = pipeline["water_out"]
 
     open_incidents = db.query(models.Incident).filter(models.Incident.resolved.is_(False)).count()
-    result = orchestrator.run_recommendation(db, twin_state, water_out, open_incidents)
+    result = orchestrator.route_task(db, twin_state, water_out, open_incidents)
 
-    # Persist the memory (Stage 1-3 of Memory Lifecycle, SDD Section 11)
-    conversation_id = memory_store.get_or_create_default_conversation(db)
+    # Persist recommendation summary into agentic memory
     summary = summarise_recommendation(twin_state, water_out, result["recommendation"])
-    memory = memory_store.store_memory(db, conversation_id, "recommendation", summary)
+    memory_store.store_memory_embedding(
+        db,
+        memory_type="recommendation",
+        source_id=result.get("run_id", reading.telemetry_id),
+        summary=summary,
+    )
 
     rec_row = models.Recommendation(
         telemetry_id=reading.telemetry_id,
-        memory_id=memory.memory_id,
         text=result["recommendation"],
         confidence=result["confidence"],
         agent_name=result["agent_name"],

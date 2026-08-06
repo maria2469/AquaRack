@@ -94,12 +94,12 @@ def test_multi_agent_recommend_and_feedback():
     resp = client.post("/api/v1/recommend", json={"telemetry_id": telemetry_id})
     assert resp.status_code == 200
     rec = resp.json()
-    assert rec["agent_name"] == "multi_agent_orchestrator"
+    assert rec["agent_name"] in ("langgraph_multi_agent", "multi_agent_orchestrator")
     assert 0 <= rec["confidence"] <= 1
-    assert len(rec["agent_trace"]) >= 4  # memory_rag, telemetry_analyst, water_cooling, capacity_planning, guardrail_critic
+    assert len(rec["agent_trace"]) >= 4  # MonitorAgent, PredictorAgent, OptimizerAgent, ActionAgent, ExplainerAgent
 
     agent_names = {step["agent"] for step in rec["agent_trace"]}
-    assert {"memory_rag", "telemetry_analyst", "water_cooling", "capacity_planning", "guardrail_critic"} <= agent_names
+    assert {"MonitorAgent", "PredictorAgent", "OptimizerAgent", "ActionAgent"} <= agent_names
 
     resp = client.post(
         "/api/v1/agents/feedback",
@@ -128,7 +128,16 @@ def test_watermodel_fleet_aggregate():
 
 
 def test_memory_retier_job_runs():
+    from app import models
+    from app.database import SessionLocal
     from app.memory_engine.retier_job import retier_memories
+
+    db = SessionLocal()
+    try:
+        db.add(models.Memory(type="incident", summary_text="Test memory for lifecycle tiering"))
+        db.commit()
+    finally:
+        db.close()
 
     counts = retier_memories()
     assert counts["hot"] + counts["warm"] + counts["cold"] >= 1

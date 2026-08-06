@@ -12,6 +12,7 @@ class MCPConfig(BaseSettings):
     COCKROACH_MCP_API_KEY: str = os.getenv("COCKROACH_MCP_API_KEY", "")
     MCP_ENABLED: bool = True
     MCP_TIMEOUT_SECONDS: float = 10.0
+    
 
 
 mcp_config = MCPConfig()

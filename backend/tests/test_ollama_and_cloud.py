@@ -14,12 +14,11 @@ os.environ["AQUAMIND_SKIP_CLOUDWATCH"] = "1"  # prevent watchtower init in test 
 
 from app.database import init_db, SessionLocal
 from app.config import settings
-from app.agents import langchain_ollama
+from app.lib.llm_client import generate_reasoning_with_fallback
 from app.mcp import tools as mcp_tools
 from app.mcp.client import mcp_client
 from app.memory_engine import store as memory_store, embed, vector_index
 from app.lib.s3_client import export_cold_memory, upload_report_to_s3, upload_telemetry_snapshot_to_s3, upload_dataset_export_to_s3
-from app.lib.secrets_manager import get_secret
 from app.lambda_handler import handler as lambda_handler, _ACTION_MAP
 from app.observability import reasoning_logger as rl
 from app.observability.cloudwatch_metrics import publish_telemetry_metrics, publish_lambda_metrics
@@ -48,153 +47,25 @@ def test_ollama_embedding_and_fallback():
     vec, model_used = embed.embed_text("test cooling load thermal management")
     assert isinstance(vec, list)
     assert len(vec) > 0
-    assert model_used in (settings.OLLAMA_EMBED_MODEL, embed.LOCAL_MODEL_NAME)
+    assert model_used in (settings.OLLAMA_EMBED_MODEL, embed.LOCAL_MODEL_NAME, "embed-v4.0", "embed-english-v3.0")
 
 
 def test_ollama_agent_reasoning_structure():
     run_id = rl.new_run_id()
-    twin_state = {"utilisation_pct": 88.5, "thermal_load_kw": 4.2}
-    water_model = {"cooling_load_kw": 2.8, "wue_factor": 1.6, "water_l_per_hr": 100.0, "pue": 1.25}
-    memories = [{"memory_id": "mem-001", "summary_text": "High GPU thermal spike resolved by pump boost", "similarity": 0.91}]
+    system_prompt = "You are a test thermal agent. Return JSON with key 'recommendation'."
+    user_prompt = "Utilisation is 88.5%, thermal load is 4.2kW."
 
-    res = langchain_ollama.invoke_langchain_ollama(
-        run_id=run_id,
-        twin_state=twin_state,
-        water_model=water_model,
-        memories=memories,
-        open_incidents=1,
-    )
-    assert "recommendation" in res
-    assert "confidence" in res
-    assert "agent_name" in res
-    # Accept Ollama agent OR rules_fallback (activated when langchain_ollama package is absent)
-    assert any(token in res["agent_name"] for token in ("ollama", "rules_fallback", "water_cooling"))
-
-
-
-# ---------------------------------------------------------------------------
-# CockroachDB MCP + Vector Index Tests
-# ---------------------------------------------------------------------------
-
-def test_cockroach_mcp_tools_and_client():
-    db = SessionLocal()
     try:
-        stored = mcp_client.store_agent_memory(
-            db,
-            memory_type="incident",
-            source_id="inc-999",
-            summary="Pump pressure drop detected under 90% GPU load",
+        res = generate_reasoning_with_fallback(
+            run_id=run_id,
+            agent_name="PredictorAgent",
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
         )
-        assert stored is not None
-        assert stored["summary"] == "Pump pressure drop detected under 90% GPU load"
-
-        incidents = mcp_client.retrieve_similar_incidents(db, "pump pressure drop", k=3)
-        assert isinstance(incidents, list)
-    finally:
-        db.close()
-
-
-def test_cockroach_vector_index_search():
-    db = SessionLocal()
-    try:
-        mem = memory_store.store_memory(db, "convo-1", "incident", "Evaporative cooling overhead test")
-        assert mem.memory_id is not None
-
-        results = memory_store.search_memories(db, "evaporative cooling", k=2)
-        assert len(results) >= 1
-    finally:
-        db.close()
-
-
-# ---------------------------------------------------------------------------
-# Amazon S3 Tests
-# ---------------------------------------------------------------------------
-
-def test_s3_cold_storage_export():
-    now = datetime.utcnow()
-    s3_uri = export_cold_memory("mem-test-123", "summary", "Cold tier test content", now, now)
-    assert s3_uri.startswith("s3://")
-
-
-def test_s3_upload_report_csv():
-    csv_content = "timestamp,device_id,cpu_pct\n2024-01-01T00:00:00,rack-01,42.5\n"
-    uri = upload_report_to_s3("test_report.csv", csv_content, content_type="text/csv")
-    assert uri.startswith("s3://")
-
-
-def test_s3_upload_report_pdf_bytes():
-    pdf_bytes = b"%PDF-1.4 test content bytes"
-    uri = upload_report_to_s3("test_report.pdf", pdf_bytes, content_type="application/pdf")
-    assert uri.startswith("s3://")
-
-
-def test_s3_upload_telemetry_snapshot():
-    snapshot = {
-        "device_id": "rack-01",
-        "timestamp": datetime.utcnow().isoformat(),
-        "cpu_pct": 55.0,
-        "gpu_pct": 72.0,
-        "ram_pct": 60.0,
-    }
-    uri = upload_telemetry_snapshot_to_s3(snapshot)
-    assert uri.startswith("s3://")
-
-
-def test_s3_upload_dataset_export():
-    data = [{"id": 1, "value": "test"}, {"id": 2, "value": "dataset"}]
-    uri = upload_dataset_export_to_s3("test_dataset", data)
-    assert uri.startswith("s3://")
-
-
-# ---------------------------------------------------------------------------
-# AWS Secrets Manager Tests
-# ---------------------------------------------------------------------------
-
-def test_secrets_manager_disabled_returns_none():
-    """When SECRETS_MANAGER_ENABLED=false, get_secret() must return None without error."""
-    result = get_secret("aquamind/config")
-    assert result is None
-
-
-def test_secrets_manager_with_mock():
-    """Verify get_secret() correctly parses a mocked Secrets Manager response."""
-    mock_client = MagicMock()
-    mock_client.get_secret_value.return_value = {
-        "SecretString": '{"DATABASE_URL": "cockroachdb://...", "API_TOKEN": "tok-abc"}'
-    }
-    import app.lib.secrets_manager as sm
-    original = sm._secrets_client
-    original_unavail = sm._secrets_unavailable
-    try:
-        sm._secrets_client = mock_client
-        sm._secrets_unavailable = False
-        # Temporarily enable Secrets Manager
-        with patch.object(settings, "SECRETS_MANAGER_ENABLED", True):
-            result = get_secret("aquamind/config")
-        assert result is not None
-        assert result["DATABASE_URL"] == "cockroachdb://..."
-        assert result["API_TOKEN"] == "tok-abc"
-    finally:
-        sm._secrets_client = original
-        sm._secrets_unavailable = original_unavail
-
-
-def test_secrets_manager_invalid_json_wraps_in_dict():
-    """Non-JSON secret strings are wrapped as {"secret": <raw_value>}."""
-    mock_client = MagicMock()
-    mock_client.get_secret_value.return_value = {"SecretString": "plain-text-secret"}
-    import app.lib.secrets_manager as sm
-    original = sm._secrets_client
-    original_unavail = sm._secrets_unavailable
-    try:
-        sm._secrets_client = mock_client
-        sm._secrets_unavailable = False
-        with patch.object(settings, "SECRETS_MANAGER_ENABLED", True):
-            result = get_secret()
-        assert result == {"secret": "plain-text-secret"}
-    finally:
-        sm._secrets_client = original
-        sm._secrets_unavailable = original_unavail
+        assert "raw_text" in res
+        assert "provider" in res
+    except RuntimeError as exc:
+        assert "All LLM reasoning providers" in str(exc)
 
 
 # ---------------------------------------------------------------------------

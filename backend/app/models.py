@@ -172,7 +172,7 @@ class Recommendation(Base):
     text = Column(String, nullable=False)
     expected_water_saving = Column(Float, nullable=True, default=0.0)
     confidence = Column(Float, nullable=False)
-    agent_name = Column(String, nullable=False)  # 'rules_fallback' | 'bedrock_single' | 'multi_agent_orchestrator'
+    agent_name = Column(String, nullable=False)  # 'langgraph_multi_agent' | 'multi_agent_orchestrator'
     cited_memory_ids = Column(JSON, default=list)
     rationale = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

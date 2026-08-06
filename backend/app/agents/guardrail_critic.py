@@ -1,15 +1,11 @@
 """
-Guardrail / Critic Agent (SDD Phase 2, Section 6.1 / 18.2): "Applies
-Bedrock Guardrails and policy checks before a recommendation is persisted
-or surfaced."
+Guardrail / Critic Agent (SDD Phase 2, Section 6.1 / 18.2): Applies safety and policy
+checks before a recommendation is persisted or surfaced.
 
-In AWS, this maps onto Amazon Bedrock Guardrails, configured to (a) block
-denied topics and (b) enforce that numeric claims are traceable to CONTEXT
-or MEMORIES (Section 18.2). This local implementation performs the same
-two checks deterministically, with zero external dependency, so the
-guardrail step is always exercised in the demo (mirrors Phase 1's
-zero-mandatory-cloud-dependency principle carried into Phase 2). Every
-check outcome is pushed to the real-time reasoning log.
+Performs two checks deterministically with zero external dependency:
+  (a) blocks denied topics outside the cooling/water domain, and
+  (b) enforces that numeric claims in recommendations are traceable to CONTEXT or MEMORIES.
+Every check outcome is pushed to the real-time reasoning log.
 """
 import re
 from typing import Dict

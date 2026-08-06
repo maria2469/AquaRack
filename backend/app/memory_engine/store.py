@@ -3,7 +3,8 @@ Vector memory storage/search for RackPulse.
 """
 import logging
 import os
-from typing import List, Dict, Any
+from datetime import datetime
+from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 
 from app import models
@@ -56,14 +57,13 @@ def _python_cosine_fallback(
 def search_memory_embeddings(
     db: Session, query_text: str, memory_type: str, k: int = 5
 ) -> Dict[str, Any]:
-    query_vector, model_name = embed_text(query_text)  # FIX: real embed_text now
-                                                          # returns (vector, model_name)
+    query_vector, model_name = embed_text(query_text)
 
     try:
         matches = native_search_memory_embeddings(db, query_vector, memory_type, k)
-        retrieval_method = "cockroach_vector" if matches else None
         if matches is None:
             raise RuntimeError("native search unavailable")
+        retrieval_method = "cockroach_vector"
     except Exception as exc:
         logger.warning("Native VECTOR search failed (%s); falling back to Python cosine.", exc)
         matches = _python_cosine_fallback(db, query_vector, memory_type, k)
@@ -74,10 +74,47 @@ def search_memory_embeddings(
     return {
         "matches": matches,
         "retrieval_method": retrieval_method,
-        "embedding_model": model_name,  # FIX: report the *actual* model used
-                                          # this request, not a hardcoded constant
+        "embedding_model": model_name,
         "searched_records": total,
     }
+
+
+def search_memory_embeddings_hybrid(
+    db: Session,
+    query_text: str,
+    memory_type: str = "incident",
+    rack_id: Optional[str] = None,
+    min_severity: Optional[str] = None,
+    time_range_hours: Optional[int] = None,
+    k: int = 5,
+) -> Dict[str, Any]:
+    """Hybrid Vector + Structured Search with fallback to standard vector/cosine search."""
+    query_vector, model_name = embed_text(query_text)
+
+    from app.memory_engine.vector_index import native_hybrid_search_memory_embeddings
+    try:
+        matches = native_hybrid_search_memory_embeddings(
+            db,
+            query_vector=query_vector,
+            memory_type=memory_type,
+            rack_id=rack_id,
+            min_severity=min_severity,
+            time_range_hours=time_range_hours,
+            k=k,
+        )
+        if matches is not None:
+            return {
+                "matches": matches,
+                "retrieval_method": "cockroach_hybrid_vector",
+                "embedding_model": model_name,
+                "searched_records": len(matches),
+            }
+    except Exception as exc:
+        logger.warning("Native hybrid search failed: %s; falling back.", exc)
+
+    # Fallback to standard vector search
+    return search_memory_embeddings(db, query_text=query_text, memory_type=memory_type, k=k)
+
 
 
 def store_memory_embedding(
@@ -104,3 +141,32 @@ def store_memory_embedding(
         pass
 
     return row
+
+
+def search_memories(db: Session, query_text: str, k: int = 5) -> List[Dict[str, Any]]:
+    """Backward compatibility helper for /api/v1/memory/search."""
+    res = search_memory_embeddings(db, query_text=query_text, memory_type="recommendation", k=k)
+    matches = res.get("matches", [])
+    if not matches:
+        res_inc = search_memory_embeddings(db, query_text=query_text, memory_type="incident", k=k)
+        matches = res_inc.get("matches", [])
+    results = []
+    for m in matches:
+        created = m.get("created_at")
+        if isinstance(created, str):
+            try:
+                created = datetime.fromisoformat(created)
+            except Exception:
+                created = datetime.utcnow()
+        elif not created:
+            created = datetime.utcnow()
+
+        results.append({
+            "memory_id": m.get("id", m.get("source_id", "")),
+            "type": m.get("memory_type", "recommendation"),
+            "summary_text": m.get("summary", ""),
+            "tier": "hot",
+            "similarity": m.get("similarity") or 0.9,
+            "created_at": created,
+        })
+    return results

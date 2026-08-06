@@ -1,15 +1,18 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+
 import { motion } from "framer-motion";
 import {
   Cpu, Thermometer, Droplets, Gauge, BrainCircuit,
-  Download, RefreshCw, Wifi, WifiOff, AlertCircle, Fan, BatteryMedium,
+  Download, RefreshCw, Wifi, WifiOff, AlertCircle,
   Zap, Database, ShieldCheck, Server, Bot, FileText
 } from "lucide-react";
+
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line
 } from "recharts";
 import { useLiveTelemetry } from "../hooks/useLiveTelemetry";
-import { downloadDailyReport, getEnterpriseDashboard, postReason } from "../lib/api";
+import { downloadDailyReport, postReason } from "../lib/api";
+
 import StatCard from "../components/ui/StatCard";
 import AmbientVeil from "../components/ui/AmbientVeil";
 import AgentExplanationPanel from "../components/AgentExplanationPanel";
@@ -37,30 +40,18 @@ export default function Dashboard() {
   const { data, status, refresh } = useLiveTelemetry({ intervalMs: 5000 });
   const [reasonLoading, setReasonLoading] = useState(false);
   const [reasoningData, setReasoningData] = useState(null);
-  const [dashData, setDashData] = useState(null);
   const [isChatbotOpen, setIsChatbotOpen] = useState(false);
 
+  // useLiveTelemetry now fetches /api/dashboard and exposes the full dashboard
+  // shape including charts and latest_telemetry — use it directly.
+  const dashData = data;
   const telemetry = data?.latest_telemetry;
-
-  const fetchDashboardData = async () => {
-    try {
-      const res = await getEnterpriseDashboard();
-      setDashData(res);
-    } catch (e) {
-      console.warn("Could not fetch enterprise dashboard endpoint", e);
-    }
-  };
-
-  useEffect(() => {
-    fetchDashboardData();
-  }, [data]);
 
   const handleReason = async () => {
     setReasonLoading(true);
     try {
       const res = await postReason(telemetry?.telemetry_id);
       setReasoningData(res);
-      await fetchDashboardData();
       await refresh();
     } catch (err) {
       console.error("Reasoning call failed", err);

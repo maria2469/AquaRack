@@ -205,3 +205,82 @@ def native_search_memory_embeddings(
         )
 
         return None
+
+
+def native_hybrid_search_memory_embeddings(
+    db: Session,
+    query_vector: List[float],
+    memory_type: Optional[str] = None,
+    rack_id: Optional[str] = None,
+    min_severity: Optional[str] = None,
+    time_range_hours: Optional[int] = None,
+    k: int = 5,
+):
+    """
+    Hybrid Vector + Structured Search in CockroachDB.
+    Combines vector cosine similarity with structured SQL predicates:
+      - memory_type filtering
+      - incident severity / metadata joins
+      - time range window filtering (NOW() - INTERVAL 'X hours')
+    """
+    if not IS_COCKROACHDB:
+        return None
+
+    try:
+        sql = """
+        SELECT
+            m.id,
+            m.memory_type,
+            m.source_id,
+            m.summary,
+            m.created_at,
+            1 - (
+                m.vector_native <=> CAST(:vec AS VECTOR)
+            ) AS similarity
+        FROM memory_embeddings m
+        """
+
+        joins = []
+        where_clauses = ["m.vector_native IS NOT NULL"]
+        params = {"vec": str(query_vector), "k": k}
+
+        if memory_type:
+            where_clauses.append("m.memory_type = :mtype")
+            params["mtype"] = memory_type
+
+        if time_range_hours:
+            where_clauses.append(f"m.created_at >= NOW() - INTERVAL '{int(time_range_hours)} hours'")
+
+        if min_severity and (memory_type == "incident" or not memory_type):
+            joins.append("LEFT JOIN incidents i ON m.source_id = i.incident_id")
+            where_clauses.append("i.severity = :severity")
+            params["severity"] = min_severity
+
+        if rack_id:
+            # If joined with telemetry or incidents
+            if "incidents i" not in " ".join(joins):
+                joins.append("LEFT JOIN incidents i ON m.source_id = i.incident_id")
+            joins.append("LEFT JOIN telemetry t ON i.telemetry_id = t.telemetry_id")
+            where_clauses.append("(t.rack_id = :rack_id OR m.summary LIKE :rack_pattern)")
+            params["rack_id"] = rack_id
+            params["rack_pattern"] = f"%{rack_id}%"
+
+        full_sql = f"{sql} {' '.join(joins)} WHERE {' AND '.join(where_clauses)} ORDER BY m.vector_native <=> CAST(:vec AS VECTOR) LIMIT :k"
+
+        rows = db.execute(text(full_sql), params).mappings().all()
+
+        return [
+            {
+                "id": r["id"],
+                "memory_type": r["memory_type"],
+                "source_id": r["source_id"],
+                "summary": r["summary"],
+                "created_at": r["created_at"],
+                "similarity": float(r["similarity"]),
+            }
+            for r in rows
+        ]
+    except Exception as exc:
+        db.rollback()
+        logger.warning("Native hybrid vector search failed: %s. Falling back.", exc)
+        return None

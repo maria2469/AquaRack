@@ -14,7 +14,7 @@ tables only — nothing in phase1_standalone/app/models.py is replaced.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, String, Float, Integer, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, String, Float, Integer, DateTime, ForeignKey, JSON, Boolean
 
   # noqa: F401  (wire sys.path first)
 from app.database import Base
@@ -60,3 +60,47 @@ class CDCExportLog(Base):
     memory_id = Column(String, ForeignKey("memories.memory_id"), nullable=False)
     exported_at = Column(DateTime, default=datetime.utcnow)
     s3_uri = Column(String, nullable=False)  # simulated local path standing in for a real S3 URI
+
+
+class Episode(Base):
+    __tablename__ = "episodes"
+    episode_id = Column(String, primary_key=True, default=_uuid)
+    run_id = Column(String, nullable=False, index=True)
+    rack_id = Column(String, ForeignKey("racks.rack_id"), nullable=True)
+    recommendation_id = Column(String, ForeignKey("recommendations.recommendation_id"), nullable=True)
+    telemetry_snapshot = Column(JSON, nullable=False)
+    water_snapshot = Column(JSON, nullable=False)
+    weather_snapshot = Column(JSON, nullable=True)
+    action_taken = Column(String, nullable=False)
+    action_params = Column(JSON, nullable=True)
+    confidence_at_decision = Column(Float, nullable=False)
+    outcome_recorded_at = Column(DateTime, nullable=True)
+    water_delta_pct = Column(Float, nullable=True)
+    temp_delta_c = Column(Float, nullable=True)
+    incident_occurred = Column(Boolean, nullable=True)
+    success = Column(Boolean, nullable=True)
+    reward = Column(Float, nullable=True)
+    embedding = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ReasoningTrace(Base):
+    __tablename__ = "reasoning_traces"
+    trace_id = Column(String, primary_key=True, default=_uuid)
+    run_id = Column(String, nullable=False, index=True)
+    agent = Column(String, nullable=False)
+    stage = Column(String, nullable=False)
+    detail = Column(JSON, nullable=True)
+    alternatives_rejected = Column(JSON, default=list)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class StrategyScore(Base):
+    __tablename__ = "strategy_scores"
+    strategy_key = Column(String, primary_key=True)
+    success_count = Column(Integer, default=0)
+    failure_count = Column(Integer, default=0)
+    total_water_saved_l = Column(Float, default=0.0)
+    confidence = Column(Float, default=0.5)
+    last_used_at = Column(DateTime, default=datetime.utcnow)
+

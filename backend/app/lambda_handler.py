@@ -5,14 +5,16 @@ Acts as the entry point when deployed as an AWS Lambda function.
 Triggered by Amazon EventBridge scheduled rules to execute one of
 several named actions. Supported ``detail.action`` values:
 
-  retier_memories          — run the hot→warm→cold memory lifecycle job
-                             and export newly-cold memories to S3.
-  generate_scheduled_report — generate a daily CSV telemetry summary
-                             and upload it to S3.
-  cleanup_old_telemetry    — delete telemetry rows older than the
-                             configured retention window (90 days default).
-  telemetry_snapshot       — fetch the latest telemetry row and upload
-                             a point-in-time JSON snapshot to S3.
+  retier_memories            — run the hot→warm→cold memory lifecycle job
+                               and export newly-cold memories to S3.
+  generate_scheduled_report  — generate a daily CSV telemetry summary
+                               and upload it to S3.
+  cleanup_old_telemetry      — delete telemetry rows older than the
+                               configured retention window (90 days default).
+  telemetry_snapshot         — fetch the latest telemetry row and upload
+                               a point-in-time JSON snapshot to S3.
+  resolve_episode_outcomes   — resolve all pending Episode rows (outcome_recorded_at
+                               IS NULL, older than 15 min) and upsert StrategyScores.
 
 Falls back to ``retier_memories`` for plain rate/cron events that carry
 no ``detail.action`` key (backward-compatible with the v1 schedule).
@@ -29,6 +31,7 @@ from typing import Any, Dict
 
 from app.config import settings
 from app.memory_engine.retier_job import retier_memories
+from app.memory_engine.outcome_watcher import resolve_pending_episodes
 from app.observability import reasoning_logger as rl
 
 logger = logging.getLogger("aquamind.lambda_handler")
@@ -176,11 +179,27 @@ def _action_telemetry_snapshot(run_id: str, start: datetime) -> Dict[str, Any]:
 # Action router
 # ---------------------------------------------------------------------------
 
+def _action_resolve_episode_outcomes(run_id: str, start: datetime) -> Dict[str, Any]:
+    """Resolve pending episode outcomes and upsert StrategyScores."""
+    result = resolve_pending_episodes(now=start)
+    rl.log_step(run_id, "aws_lambda", "decision", {
+        "action": "resolve_episode_outcomes",
+        "status": "success",
+        "resolved": result.get("resolved_episodes", 0),
+    })
+    return {
+        "action": "resolve_episode_outcomes",
+        "message": "Episode outcomes resolved",
+        **result,
+    }
+
+
 _ACTION_MAP = {
     "retier_memories": _action_retier_memories,
     "generate_scheduled_report": _action_generate_scheduled_report,
     "cleanup_old_telemetry": _action_cleanup_old_telemetry,
     "telemetry_snapshot": _action_telemetry_snapshot,
+    "resolve_episode_outcomes": _action_resolve_episode_outcomes,
 }
 
 

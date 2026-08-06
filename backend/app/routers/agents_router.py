@@ -13,7 +13,6 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-  # noqa: F401
 from app import models
 from app import schemas as p1_schemas
 from app.database import get_db
@@ -38,13 +37,17 @@ def recommend_multi_agent(body: p1_schemas.RecommendationRequest, db: Session = 
     open_incidents = db.query(models.Incident).filter(models.Incident.resolved.is_(False)).count()
     result = orchestrator.route_task(db, twin_state, water_out, open_incidents)
 
-    conversation_id = memory_store.get_or_create_default_conversation(db)
+    # Persist recommendation summary into agentic memory via store_memory_embedding
     summary = summarise_recommendation(twin_state, water_out, result["recommendation"])
-    memory = memory_store.store_memory(db, conversation_id, "recommendation", summary)
+    memory_store.store_memory_embedding(
+        db,
+        memory_type="recommendation",
+        source_id=result.get("run_id", reading.telemetry_id),
+        summary=summary,
+    )
 
     rec_row = models.Recommendation(
         telemetry_id=reading.telemetry_id,
-        memory_id=memory.memory_id,
         text=result["recommendation"],
         confidence=result["confidence"],
         agent_name=result["agent_name"],
@@ -63,7 +66,7 @@ def recommend_multi_agent(body: p1_schemas.RecommendationRequest, db: Session = 
     return MultiAgentRecommendationOut(
         recommendation_id=rec_row.recommendation_id,
         telemetry_id=rec_row.telemetry_id,
-        memory_id=rec_row.memory_id,
+        memory_id=None,  # memory_id field removed; memory stored via memory_embeddings
         text=rec_row.text,
         confidence=rec_row.confidence,
         agent_name=rec_row.agent_name,

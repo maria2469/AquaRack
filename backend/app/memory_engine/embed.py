@@ -1,19 +1,7 @@
 """
-Memory Engine — Stage 2b: embedding (SDD Section 11.2 / 15.2).
-Default: local, zero-cost, deterministic hashed bag-of-words embedding
-(768-dim) — no model download, no network required.
-If OLLAMA_ENABLED=true and the Ollama call succeeds, embeddings are
-generated via a real semantic model instead.
-
-FIX: embed_text() now logs explicitly which path produced the vector
-(semantic Ollama vs. non-semantic local hash), and no longer returns
-LOCAL_MODEL_NAME "silently" — a caller reading model_name in logs can
-now tell whether retrieval quality can be trusted as semantic.
-Root cause note: hashed bag-of-words has near-zero semantic generalization
--- "evaporative cooling" and "water flow" share no tokens, so it can only
-match on literal vocabulary overlap. Combined with near-identical templated
-summaries (see summarize.py fix), this is what produces flat, near-equal
-similarity scores across unrelated memories.
+Memory Engine — embedding (SDD Section 11.2 / 15.2).
+Primary: Cohere embed API (semantic). Fallback: local hashed bag-of-words
+(non-semantic, offline, zero-cost).
 """
 import hashlib
 import math
@@ -21,25 +9,42 @@ import re
 import logging
 from typing import List, Dict, Optional
 
+import cohere
+
 from app.config import settings
 
-LOCAL_EMBED_DIM = 768
-LOCAL_MODEL_NAME = "local-hashed-bow-768-v1"
+TARGET_EMBED_DIM = getattr(settings, "EMBEDDING_DIM", 1024)
+LOCAL_EMBED_DIM = TARGET_EMBED_DIM
+LOCAL_MODEL_NAME = f"local-hashed-bow-{TARGET_EMBED_DIM}-v1"
 
 _token_re = re.compile(r"[a-zA-Z0-9_]+")
 logger = logging.getLogger(__name__)
 
 _embedding_cache: Dict[str, List[float]] = {}
+_cohere_client: Optional[cohere.Client] = None
+
+
+def _get_cohere_client() -> Optional[cohere.Client]:
+    global _cohere_client
+    if _cohere_client is None and settings.COHERE_API_KEY:
+        _cohere_client = cohere.Client(settings.COHERE_API_KEY)
+    return _cohere_client
 
 
 def _tokenize(text: str) -> List[str]:
     return _token_re.findall(text.lower())
 
 
-def _local_embed(text: str, dim: int = LOCAL_EMBED_DIM) -> List[float]:
-    """Deterministic hashed bag-of-words embedding. NOT semantic -- see module
-    docstring. Kept as the offline zero-cost fallback, but every call site
-    that ends up here now logs it (see embed_text)."""
+def _normalize_dimension(vec: List[float], target_dim: int = TARGET_EMBED_DIM) -> List[float]:
+    """Ensures vector is exactly target_dim length (pads with 0.0 or truncates if needed)."""
+    if len(vec) == target_dim:
+        return vec
+    if len(vec) < target_dim:
+        return vec + [0.0] * (target_dim - len(vec))
+    return vec[:target_dim]
+
+
+def _local_embed(text: str, dim: int = TARGET_EMBED_DIM) -> List[float]:
     vec = [0.0] * dim
     tokens = _tokenize(text)
     if not tokens:
@@ -53,47 +58,46 @@ def _local_embed(text: str, dim: int = LOCAL_EMBED_DIM) -> List[float]:
     return [v / norm for v in vec]
 
 
-def _ollama_embed(text: str) -> Optional[List[float]]:
-    """Ollama vector embedding via LangChain OllamaEmbeddings wrapper."""
-    from app.agents.langchain_groq import embed_text_ollama
+def _cohere_embed(text: str, input_type: str = "search_document") -> Optional[List[float]]:
+    client = _get_cohere_client()
+    if not client:
+        return None
+    response = client.embed(
+        texts=[text],
+        model=settings.COHERE_EMBED_MODEL,
+        input_type=input_type,
+    )
+    raw_vec = response.embeddings[0]
+    return _normalize_dimension(raw_vec, TARGET_EMBED_DIM)
 
-    return embed_text_ollama(text)
 
+def embed_text(text: str, input_type: str = "search_document"):
+    """Returns (vector, model_name_used) with guaranteed 1024 dimensions."""
+    cache_key = f"{input_type}:{text}"
+    if cache_key in _embedding_cache:
+        return _embedding_cache[cache_key], settings.COHERE_EMBED_MODEL if (settings.COHERE_ENABLED and settings.COHERE_API_KEY) else LOCAL_MODEL_NAME
 
-def embed_text(text: str):
-    """Returns (vector, model_name_used).
-
-    FIX: every fallback path is now logged so degraded (non-semantic)
-    retrieval is visible in logs instead of silent.
-    """
-    if settings.OLLAMA_ENABLED:
-        if text in _embedding_cache:
-            return _embedding_cache[text], settings.OLLAMA_EMBED_MODEL
+    if settings.COHERE_ENABLED and settings.COHERE_API_KEY:
         try:
-            vector = _ollama_embed(text)
+            vector = _cohere_embed(text, input_type=input_type)
             if vector:
-                _embedding_cache[text] = vector
-                return vector, settings.OLLAMA_EMBED_MODEL
-            logger.warning(
-                "Ollama embedding returned empty result for text (len=%d); "
-                "falling back to non-semantic local hash embedding.",
-                len(text),
-            )
+                _embedding_cache[cache_key] = vector
+                return vector, settings.COHERE_EMBED_MODEL
+            logger.warning("Cohere embedding returned empty result; falling back to local hash embedding.")
         except Exception as e:
             logger.error(
-                "Ollama embedding failed (%s); falling back to non-semantic "
-                "local hash embedding. Retrieval quality will be degraded "
-                "until this is resolved.",
-                e,
+                "Cohere embedding failed (%s); falling back to secondary local embedding (%s).",
+                e, LOCAL_MODEL_NAME,
             )
     else:
         logger.warning(
-            "OLLAMA_ENABLED is False -- using non-semantic local hash embedding "
-            "(%s). Similarity scores will reflect literal token overlap only, "
-            "not meaning.",
-            LOCAL_MODEL_NAME,
+            "COHERE_ENABLED is False or COHERE_API_KEY unset -- using secondary "
+            "local embedding (%s).", LOCAL_MODEL_NAME,
         )
-    return _local_embed(text), LOCAL_MODEL_NAME
+
+    local_vec = _local_embed(text, dim=TARGET_EMBED_DIM)
+    _embedding_cache[cache_key] = local_vec
+    return local_vec, LOCAL_MODEL_NAME
 
 
 def cosine_similarity(a: List[float], b: List[float]) -> float:

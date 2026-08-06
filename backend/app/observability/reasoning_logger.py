@@ -18,11 +18,11 @@ services) — each process just imports `reasoning_logger` and calls
 Usage:
     from app.observability.reasoning_logger import log_step, log_decision
 
-    log_step(run_id, agent="water_cooling", stage="input",
+    log_step(run_id, agent="MonitorAgent", stage="input",
               detail={"utilisation_pct": 91.2, "cooling_load_kw": 3.1})
-    log_step(run_id, agent="water_cooling", stage="reasoning",
-              detail={"note": "Calling Bedrock via LangChain..."})
-    log_decision(run_id, agent="water_cooling",
+    log_step(run_id, agent="PredictorAgent", stage="reasoning",
+              detail={"note": "Calling Ollama Qwen via llm_client..."})
+    log_decision(run_id, agent="LangGraphOrchestrator",
                  recommendation="...", confidence=0.88,
                  rationale="...", cited_memory_ids=[...])
 """
@@ -113,7 +113,30 @@ def new_run_id() -> str:
     return str(uuid.uuid4())
 
 
-def _publish(event: ReasoningEvent) -> None:
+def _persist_to_db(event: ReasoningEvent, alternatives_rejected: Optional[List[Any]] = None) -> None:
+    """Write ReasoningTrace row to DB. Silently skipped on any error."""
+    try:
+        from app.database import SessionLocal
+        from app.models_ext import ReasoningTrace
+        from datetime import datetime
+        db = SessionLocal()
+        try:
+            trace = ReasoningTrace(
+                run_id=event.run_id,
+                agent=event.agent,
+                stage=event.stage,
+                detail=event.detail,
+                alternatives_rejected=alternatives_rejected or [],
+            )
+            db.add(trace)
+            db.commit()
+        finally:
+            db.close()
+    except Exception as _db_exc:  # noqa: BLE001
+        reasoning_logger.debug("ReasoningTrace DB persist skipped: %s", _db_exc)
+
+
+def _publish(event: ReasoningEvent, alternatives_rejected: Optional[List[Any]] = None) -> None:
     global _seq_counter
     _seq_counter += 1
     event.seq = _seq_counter
@@ -124,6 +147,10 @@ def _publish(event: ReasoningEvent) -> None:
     # the terminal / log file, not just retrievable after the fact.
     reasoning_logger.info(json.dumps(event.to_dict(), default=str))
 
+    # Persist to DB (Task 5 — ReasoningTrace). Wrapped defensively so a
+    # DB failure or missing table never halts agent execution.
+    _persist_to_db(event, alternatives_rejected)
+
     # Fan out to any live SSE subscribers (dropped silently if the queue is
     # full / nobody is listening — this must never block agent execution).
     for q in list(_subscribers):
@@ -133,9 +160,18 @@ def _publish(event: ReasoningEvent) -> None:
             pass
 
 
-def log_step(run_id: str, agent: str, stage: str, detail: Optional[Dict[str, Any]] = None) -> None:
+def log_step(
+    run_id: str,
+    agent: str,
+    stage: str,
+    detail: Optional[Dict[str, Any]] = None,
+    alternatives_rejected: Optional[List[Any]] = None,
+) -> None:
     """Log one reasoning step in real time (input received, tool called, etc.)."""
-    _publish(ReasoningEvent(run_id=run_id, agent=agent, stage=stage, detail=detail or {}))
+    _publish(
+        ReasoningEvent(run_id=run_id, agent=agent, stage=stage, detail=detail or {}),
+        alternatives_rejected=alternatives_rejected,
+    )
 
 
 def log_decision(

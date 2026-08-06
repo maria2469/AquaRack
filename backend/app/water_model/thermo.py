@@ -90,23 +90,29 @@ class WaterModel:
     def compute_water_usage(self, thermal_load_kw: float, cpu_pct: float = 50.0, gpu_pct: float = 50.0) -> dict:
         """
         Calculates IT Thermal Load, Water Consumption (L/hr), Cooling Demand (kW),
-        Cooling Cost ($/hr), and Expected Water Savings (%).
+        Cooling Cost ($/hr), and Expected Water Savings (%) using CoolProp Real Physics.
         """
-        # Dynamic thermal load calculation based on CPU and GPU utilization if provided
         effective_load = thermal_load_kw * (0.3 + 0.3 * (cpu_pct / 100.0) + 0.4 * (gpu_pct / 100.0))
         cooling_load_kw = self.compute_cooling_demand(effective_load)
         wue = self.compute_wue_factor()
         f_factor = psychrometric_factor(self.ambient_temp, self.humidity)
-        
+
         raw_water_l_hr = wue * effective_load * f_factor
-        
+
         # Apply cooling strategy reduction
         saving_pct = self.STRATEGY_DISCOUNTS.get(self.cooling_strategy, 0.15) * 100.0
         optimized_water_l_hr = raw_water_l_hr * (1.0 - (saving_pct / 100.0))
-        
-        # Estimated cost per 1000 Liters + electricity cost ($0.005/L water + $0.12/kWh cooling)
+
+        # Real fluid thermodynamics using CoolProp engine
+        from app.water_model.coolprop_engine import coolprop_engine
+        thermo_res = coolprop_engine.compute_thermodynamic_cooling(
+            cooling_load_kw=cooling_load_kw,
+            ambient_temp_c=self.ambient_temp,
+            relative_humidity_pct=self.humidity,
+        )
+
         cooling_cost = (optimized_water_l_hr * 0.005) + (cooling_load_kw * 0.12)
-        
+
         return {
             "cooling_load_kw": round(cooling_load_kw, 4),
             "wue_factor": wue,
@@ -117,5 +123,7 @@ class WaterModel:
             "pue": self.compute_pue(),
             "ambient_temp": self.ambient_temp,
             "humidity": self.humidity,
+            "coolprop_physics": thermo_res,
         }
+
 

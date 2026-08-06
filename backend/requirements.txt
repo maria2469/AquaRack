@@ -36,6 +36,9 @@ boto3>=1.35.0
 watchtower>=3.0.0            # optional: CloudWatch log shipping (CLOUDWATCH_ENABLED)
 langchain>=0.3.7
 langchain-core>=0.3.15
-langchain-aws>=0.2.7
 langchain-groq
 groq
+requests
+cohere>=5.0.0
+langgraph>=0.2.0
+CoolProp

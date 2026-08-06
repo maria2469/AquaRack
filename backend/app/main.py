@@ -43,6 +43,7 @@ from app.database import init_db
 from app.migrate import run_migrations
 from app.routers import (
     agents_router,
+    episodes,
     fleet_dashboard,
     fleet_telemetry,
     health,
@@ -182,6 +183,7 @@ app.include_router(memory.router)
 app.include_router(dashboard.router)
 app.include_router(reports.router)
 app.include_router(agent_trace.router)
+app.include_router(episodes.router)
 
 
 # --- Serve the dashboard (no Node/build step required) ---

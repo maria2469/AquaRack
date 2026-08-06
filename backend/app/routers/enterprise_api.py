@@ -194,7 +194,7 @@ def generate_agent_reasoning(
 ):
     """
     POST /api/reason - Trigger full Agentic Memory Reasoning Loop:
-    Observe -> Remember via MCP -> Retrieve Memories via MCP -> Bedrock Reason -> Recommend -> Store New Memory.
+    Observe -> Remember via MCP -> Retrieve Memories via MCP -> Ollama/Groq Reason via llm_client -> Recommend -> Store New Memory.
     """
     telemetry_id = body.get("telemetry_id")
     pipeline = run_full_pipeline(db, telemetry_id)
@@ -424,4 +424,75 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
             "gpu_usage": data["chart_gpu"],
             "water_consumption": data["chart_water"],
         },
+    }
+
+
+@router.get("/ccloud/status")
+def get_ccloud_status():
+    """GET /api/ccloud/status - Retrieve CockroachDB Cloud cluster health via ccloud CLI JSON output."""
+    from app.mcp.ccloud_tools import ccloud_cluster_health, ccloud_list_clusters
+    health_info = ccloud_cluster_health()
+    clusters_info = ccloud_list_clusters()
+    return {
+        "status": "success",
+        "cluster_health": health_info,
+        "clusters_list": clusters_info,
+    }
+
+
+@router.post("/memory/hybrid-search")
+def hybrid_search(
+    body: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+):
+    """POST /api/memory/hybrid-search - Execute native CockroachDB Hybrid Vector + Structured Search."""
+    query = body.get("query", "rack-01 thermal spike")
+    rack_id = body.get("rack_id")
+    min_severity = body.get("min_severity")
+    time_range_hours = body.get("time_range_hours")
+    k = body.get("k", 5)
+
+    from app.memory_engine.store import search_memory_embeddings_hybrid
+    return search_memory_embeddings_hybrid(
+        db=db,
+        query_text=query,
+        memory_type="incident",
+        rack_id=rack_id,
+        min_severity=min_severity,
+        time_range_hours=time_range_hours,
+        k=k,
+    )
+
+
+@router.post("/digital-twin/energyplus-step")
+def energyplus_step(
+    body: Dict[str, Any] = Body(default={}),
+):
+    """POST /api/digital-twin/energyplus-step - Run EnergyPlus Digital Twin HVAC step simulation with Google Cluster Trace metrics."""
+    step_idx = body.get("step_idx", 120)
+    ambient_temp_c = body.get("ambient_temp_c", 25.0)
+    humidity_pct = body.get("humidity_pct", 50.0)
+
+    from app.digital_twin.energyplus_sim import energyplus_sim
+    return energyplus_sim.simulate_step(step_idx=step_idx, ambient_temp_c=ambient_temp_c, humidity_pct=humidity_pct)
+
+
+@router.get("/architecture/status")
+def get_architecture_status():
+    """GET /api/architecture/status - System status overview of all modern architectural features."""
+    from app.config import settings
+    from app.water_model.coolprop_engine import HAS_COOLPROP
+    from app.agents.langgraph_workflow import HAS_LANGGRAPH
+    from app.cli.ccloud_wrapper import ccloud_cli
+
+    return {
+        "llm_primary": {"name": f"Ollama ({settings.OLLAMA_MODEL})", "status": "active" if settings.OLLAMA_ENABLED else "disabled"},
+        "llm_fallback": {"name": f"Groq ({settings.GROQ_MODEL})", "status": "active" if (settings.GROQ_ENABLED and settings.GROQ_API_KEY) else "ready"},
+        "embedding": {"primary": "Cohere (embed-english-v3.0)", "dimension": 1024, "secondary": "Local Hashed BoW (1024d)"},
+        "multi_agent_framework": "LangGraph State Machine (Monitor->Predictor->Optimizer->Action->Explainer)",
+        "has_langgraph": HAS_LANGGRAPH,
+        "database": "CockroachDB Cloud (Vector Index + Hybrid Search)",
+        "ccloud_cli": {"available": ccloud_cli.is_available, "mode": "native" if ccloud_cli.is_available else "simulation_json"},
+        "coolprop_thermo": {"has_coolprop": HAS_COOLPROP, "mode": "CoolProp PropsSI" if HAS_COOLPROP else "thermo_physics_fallback"},
+        "digital_twin": "EnergyPlus DataCenterHVAC + Google Cluster Trace v2",
     }
