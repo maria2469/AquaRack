@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backend Connection Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a2e;
+            color: #fff;
+        }
+        .test-section {
+            background: #16213e;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            border: 1px solid #0f3460;
+        }
+        .success { color: #4ade80; }
+        .error { color: #f87171; }
+        .loading { color: #fbbf24; }
+        button {
+            background: #0f3460;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #1a1a2e; }
+        pre {
+            background: #0f3460;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Backend Connection Test</h1>
+    <p>Testing connection to: <strong>https://aquarack.onrender.com</strong></p>
+
+    <div class="test-section">
+        <h2>API Endpoints</h2>
+        <button onclick="testDashboardSummary()">Test Dashboard Summary</button>
+        <button onclick="testFleetSummary()">Test Fleet Summary</button>
+        <button onclick="testSavedResults()">Test Saved Results</button>
+        <button onclick="testSingleRack()">Test Single Rack Reasoning</button>
+        <div id="results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Results</h2>
+        <pre id="output">Click a button to test an endpoint...</pre>
+    </div>
+
+    <script>
+        const API_BASE = 'https://aquarack.onrender.com';
+        
+        async function testDashboardSummary() {
+            updateOutput('Testing Dashboard Summary...', 'loading');
+            try {
+                const response = await fetch(`${API_BASE}/api/v1/dashboard/summary`);
+                const data = await response.json();
+                updateOutput(`✅ Dashboard Summary Success:\n${JSON.stringify(data, null, 2)}`, 'success');
+            } catch (error) {
+                updateOutput(`❌ Dashboard Summary Failed:\n${error.message}`, 'error');
+            }
+        }
+
+        async function testFleetSummary() {
+            updateOutput('Testing Fleet Summary...', 'loading');
+            try {
+                const response = await fetch(`${API_BASE}/api/v1/fleet/summary`);
+                const data = await response.json();
+                updateOutput(`✅ Fleet Summary Success:\n${JSON.stringify(data, null, 2)}`, 'success');
+            } catch (error) {
+                updateOutput(`❌ Fleet Summary Failed:\n${error.message}`, 'error');
+            }
+        }
+
+        async function testSavedResults() {
+            updateOutput('Testing Saved Results...', 'loading');
+            try {
+                const response = await fetch(`${API_BASE}/api/v1/fleet/saved-results`);
+                const data = await response.json();
+                updateOutput(`✅ Saved Results Success:\n${JSON.stringify(data, null, 2)}`, 'success');
+            } catch (error) {
+                updateOutput(`❌ Saved Results Failed:\n${error.message}`, 'error');
+            }
+        }
+
+        async function testSingleRack() {
+            updateOutput('Testing Single Rack Reasoning (RACK-001)...', 'loading');
+            try {
+                const response = await fetch(`${API_BASE}/api/v1/fleet/reason/rack/RACK-001`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Device-ID': 'rack-01-primary'
+                    }
+                });
+                const data = await response.json();
+                updateOutput(`✅ Single Rack Reasoning Success:\n${JSON.stringify(data, null, 2)}`, 'success');
+            } catch (error) {
+                updateOutput(`❌ Single Rack Reasoning Failed:\n${error.message}`, 'error');
+            }
+        }
+
+        function updateOutput(message, status) {
+            const output = document.getElementById('output');
+            output.textContent = message;
+            output.className = status;
+        }
+    </script>
+</body>
+</html>
