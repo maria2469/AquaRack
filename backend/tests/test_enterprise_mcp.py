@@ -1,5 +1,5 @@
 import os
-os.environ["DATABASE_URL"] = "sqlite:///./test_aquamind_mcp.db"
+os.environ["DATABASE_URL"] = os.getenv("DATABASE_URL", "cockroachdb+psycopg://test:test@localhost:26257/test_db?sslmode=disable")
 os.environ["OLLAMA_ENABLED"] = "false"
 
 import pytest

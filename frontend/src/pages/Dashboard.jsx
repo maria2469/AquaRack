@@ -12,7 +12,8 @@ import {
 } from "recharts";
 import { useLiveTelemetry } from "../hooks/useLiveTelemetry";
 import { useReasoningProgress } from "../hooks/useReasoningProgress";
-import { downloadDailyReport, postReason } from "../lib/api";
+import { downloadDailyReport, postReason, runFleetReasoning } from "../lib/api";
+import { setGlobalFleetResult } from "../lib/globalState";
 
 import StatCard from "../components/ui/StatCard";
 import AmbientVeil from "../components/ui/AmbientVeil";
@@ -62,8 +63,21 @@ export default function Dashboard() {
     setReasonError(null);
     try {
       const tid = telemetry?.telemetry_id !== "live" ? telemetry?.telemetry_id : undefined;
+      
+      // Run single-rack reasoning first (main laptop)
       const res = await postReason(tid);
       setReasoningData(res);
+      
+      // Temporarily disable fleet reasoning to fix CORS issue
+      // const fleetRes = await runFleetReasoning(true, 0).catch(err => {
+      //   console.warn("Fleet reasoning failed (non-critical):", err);
+      //   return null;
+      // });
+      // if (fleetRes) {
+      //   setGlobalFleetResult(fleetRes);
+      //   console.log("Fleet reasoning completed:", fleetRes);
+      // }
+      
       await refresh();
     } catch (err) {
       console.error("Reasoning call failed", err);
@@ -77,7 +91,7 @@ export default function Dashboard() {
       } else if (err?.response?.status === 404) {
         errorMessage = "Reasoning endpoint not found — check backend configuration.";
       } else if (err?.response?.status === 500) {
-        errorMessage = "Backend error — check server logs for details.";
+        errorMessage = "Backend error - check server logs. Fleet reasoning temporarily disabled.";
       } else if (typeof detail === "string") {
         errorMessage = detail;
       } else if (err?.message) {
@@ -164,13 +178,13 @@ export default function Dashboard() {
                     <span className="animate-pulse">
                       {activeStage?.label 
                         ? `${activeStage.label}...` 
-                        : "Starting Ollama..."}
+                        : "Running Agent Reasoning..."}
                     </span>
                   </>
                 ) : (
                   <>
                     <BrainCircuit size={13} />
-                    Run Ollama Reasoning Loop
+                    Run Agent Reasoning
                   </>
                 )}
               </button>

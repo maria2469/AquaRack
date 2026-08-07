@@ -119,7 +119,8 @@ def _run_job(job_id: str, spec: dict) -> None:
         db.commit()
 
         mode = spec.get("mode", "opendc")
-        num_racks = max(1, int(spec.get("num_racks", 5)))
+        # Use fleet size from settings if not specified
+        num_racks = max(1, int(spec.get("num_racks", settings.FLEET_SIZE)))
         ticks = max(1, int(spec.get("duration_ticks", 20)))
 
         # Deterministic-per-job RNG seed so rack profiles are stable across
@@ -177,7 +178,8 @@ def _run_job(job_id: str, spec: dict) -> None:
             twin = DigitalTwinEngine(
                 RackProfile.load_config(rack.rack_id, rack.capacity_kw, rack.node_count), mode=mode
             )
-            device_id = f"{mode}-rack-{rack_index}-{job_id[:6]}"
+            # Use consistent device_id format for all racks
+            device_id = f"{settings.RACK_PREFIX}-{rack_index:03d}" if rack_index > 1 else "rack-01-primary"
 
             last_twin_state = None
             last_water_out = None
@@ -227,6 +229,7 @@ def _run_job(job_id: str, spec: dict) -> None:
                     from app.mcp.client import mcp_client
 
                     incident = models.Incident(
+                        device_id=device_id,  # Add device_id
                         telemetry_id=row.telemetry_id,
                         severity="HIGH",
                         description=f"[{mode}] {device_id} utilisation critical at {twin_state.utilisation_pct:.1f}%",
@@ -246,7 +249,7 @@ def _run_job(job_id: str, spec: dict) -> None:
                         rack_id=rack.rack_id,
                         created_at=incident.created_at.isoformat(),
                     )
-                    mcp_client.store_agent_memory(db, "incident", incident.incident_id, summary)
+                    mcp_client.store_agent_memory(db, "incident", incident.incident_id, summary, device_id=device_id)
                 db.commit()
 
                 last_twin_state = twin_state

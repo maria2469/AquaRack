@@ -151,6 +151,7 @@ def generate_reasoning_with_fallback(
                 {
                     "note": "Calling primary LLM (Ollama Qwen)",
                     "model": preferred_ollama_model or settings.OLLAMA_MODEL,
+                    "agent": agent_name,
                 },
             )
             res = call_ollama_qwen(
@@ -158,11 +159,12 @@ def generate_reasoning_with_fallback(
                 user_prompt=user_prompt,
                 model=preferred_ollama_model,
             )
+            res["agent_name"] = agent_name  # Add agent name to response
             rl.log_step(
                 run_id,
                 agent_name,
                 "reasoning",
-                {"note": "Ollama Qwen call succeeded", "provider": res["provider"]},
+                {"note": "Ollama Qwen call succeeded", "provider": res["provider"], "agent": agent_name},
             )
             return res
         except Exception as exc:
@@ -180,14 +182,15 @@ def generate_reasoning_with_fallback(
                 run_id,
                 agent_name,
                 "reasoning",
-                {"note": "Calling secondary LLM (Groq)", "model": settings.GROQ_MODEL},
+                {"note": "Calling secondary LLM (Groq)", "model": settings.GROQ_MODEL, "agent": agent_name},
             )
             res = call_groq_fallback(system_prompt=system_prompt, user_prompt=user_prompt)
+            res["agent_name"] = agent_name  # Add agent name to response
             rl.log_step(
                 run_id,
                 agent_name,
                 "reasoning",
-                {"note": "Groq fallback call succeeded", "provider": res["provider"]},
+                {"note": "Groq fallback call succeeded", "provider": res["provider"], "agent": agent_name},
             )
             return res
         except Exception as exc:

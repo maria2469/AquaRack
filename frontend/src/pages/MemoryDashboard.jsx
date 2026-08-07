@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Database, Brain, CheckCircle2, XCircle, BarChart3, TrendingUp,
-  RefreshCw, Trophy, AlertTriangle, Droplets, Zap, Clock
+  RefreshCw, Trophy, AlertTriangle, Droplets, Zap, Clock, Info
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -106,12 +106,6 @@ export default function MemoryDashboard() {
         getEpisodesReplay({ limit: 200, includeUnresolved: true }),
         getMemoryHistory(100)
       ]);
-      console.log('=== MEMORY DASHBOARD DEBUG ===');
-      console.log('Comprehensive Stats:', comprehensiveStats);
-      console.log('API Response - Episodes:', episodesData);
-      console.log('API Response - Memories:', memoriesData);
-      console.log('Episodes length:', episodesData?.length, 'Memories length:', memoriesData?.length);
-      console.log('============================');
       
       // Set comprehensive stats if available
       if (comprehensiveStats) {
@@ -124,7 +118,6 @@ export default function MemoryDashboard() {
         setEpisodes(episodesData || []);
       }
     } catch (error) {
-      console.error('Error fetching data:', error);
       // Set empty arrays on error - don't use demo data
       setEpisodes([]);
       setMemories([]);
@@ -143,6 +136,9 @@ export default function MemoryDashboard() {
   const successEpisodes = comprehensiveStats?.episode_stats?.successful_episodes || episodes.filter(e => e.success === true).length;
   const failedEpisodes = comprehensiveStats?.episode_stats?.failed_episodes || episodes.filter(e => e.success === false).length;
   const avgReward = comprehensiveStats?.episode_stats?.avg_reward || (totalEpisodes > 0 ? (episodes.reduce((s, e) => s + (e.reward || 0), 0) / totalEpisodes).toFixed(2) : "0.00");
+  
+  // Note: These are RL training episodes from recommendation outcomes, NOT fleet rack reasoning results
+  // Fleet rack reasoning results are shown on the Fleet Management page
   
   // Memory stats - use comprehensive stats if available, otherwise calculate from raw data
   const totalMemories = comprehensiveStats?.memory_stats?.total_memories || memories.length;
@@ -203,20 +199,12 @@ export default function MemoryDashboard() {
         <div className="relative max-w-7xl mx-auto px-5 md:px-8">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
-              <span className="text-xs uppercase tracking-[0.18em] text-flow font-mono">Agentic Memory Architecture</span>
+              <span className="text-xs uppercase tracking-[0.18em] text-flow font-mono">Reinforcement Learning Analytics</span>
               <h1 className="font-heading text-3xl md:text-4xl font-semibold text-frost mt-1.5">
-                Memory Intelligence Dashboard
+                Memory & Episodes Dashboard
               </h1>
-              <p className="text-sm text-mist mt-1">Episode history, strategy scoring, and memory retrieval analytics</p>
+              <p className="text-sm text-mist mt-1">RL training episodes, strategy scoring, and memory retrieval analytics (separate from fleet rack reasoning)</p>
             </div>
-            <button
-              onClick={fetchData}
-              disabled={loading}
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-coolant via-flow to-signal hover:brightness-110 disabled:opacity-60 px-4 py-2 text-xs font-semibold text-abyss transition-all shadow-lg"
-            >
-              <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-              Refresh Data
-            </button>
           </div>
         </div>
       </section>
@@ -232,10 +220,25 @@ export default function MemoryDashboard() {
 
         {/* Episode Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard icon={Database} label="Total Episodes" value={totalEpisodes} unit="created" accent="coolant" />
+          <StatCard icon={Database} label="Total Episodes" value={totalEpisodes} unit="RL training" accent="coolant" />
           <StatCard icon={Clock} label="Unresolved" value={unresolvedEpisodes} unit="pending" accent="flow" />
-          <StatCard icon={CheckCircle2} label="Successful" value={successEpisodes} unit="confirmed" accent="signal" />
-          <StatCard icon={XCircle} label="Failed" value={failedEpisodes} unit="confirmed" accent="alert" />
+          <StatCard icon={CheckCircle2} label="Successful Episodes" value={successEpisodes} unit="RL outcomes" accent="signal" />
+          <StatCard icon={XCircle} label="Failed Episodes" value={failedEpisodes} unit="RL outcomes" accent="alert" />
+        </div>
+        
+        {/* Info Box */}
+        <div className="card-glass rounded-xl p-4 border border-rack mb-6">
+          <div className="flex items-start gap-3">
+            <Info size={20} className="text-coolant mt-0.5" />
+            <div>
+              <h3 className="text-sm font-semibold text-frost mb-1">Important: Episode vs Fleet Reasoning</h3>
+              <p className="text-xs text-mist leading-relaxed">
+                These are <strong>RL training episodes</strong> from individual recommendation outcomes, NOT fleet rack reasoning results. 
+                Fleet rack reasoning results (RACK-001 to RACK-100) are shown on the <strong>Fleet Management</strong> page.
+                Episodes track reinforcement learning training data with reward signals and outcome tracking.
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Strategy Confidence + Pie Chart */}

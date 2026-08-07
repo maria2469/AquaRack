@@ -73,6 +73,7 @@ def handle_mcp_rpc(payload: Dict[str, Any] = Body(...), db: Session = Depends(ge
                 memory_type=args.get("memory_type", "summary"),
                 source_id=args.get("source_id", ""),
                 summary=args.get("summary", ""),
+                device_id=args.get("device_id", "rack-01-primary"),
             )
         else:
             return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": f"Tool '{name}' not found"}}

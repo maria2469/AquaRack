@@ -1,5 +1,5 @@
 """
-Database wiring (CockroachDB + SQLite fallback).
+Database wiring (CockroachDB only).
 """
 
 import logging
@@ -17,20 +17,25 @@ log = logging.getLogger(__name__)
 
 db_url = settings.DATABASE_URL.strip()
 
-IS_SQLITE = db_url.startswith("sqlite")
 IS_COCKROACHDB = (
     db_url.startswith("cockroachdb://")
     or db_url.startswith("cockroachdb+psycopg://")
 )
 
-if IS_COCKROACHDB:
-    import sqlalchemy_cockroachdb  # noqa: F401
+if not IS_COCKROACHDB:
+    raise ValueError(
+        "AquaRack requires CockroachDB. "
+        f"DATABASE_URL must start with 'cockroachdb://' or 'cockroachdb+psycopg://'. "
+        f"Got: {db_url[:20]}..."
+    )
+
+import sqlalchemy_cockroachdb  # noqa: F401
 
 
 # ---------------------------------------------------------------------
 # Automatically configure CockroachDB SSL certificate
 # ---------------------------------------------------------------------
-if IS_COCKROACHDB and "sslrootcert=" not in db_url:
+if "sslrootcert=" not in db_url:
 
     # 1. User explicitly provided a certificate path
     cert_path = os.environ.get("COCKROACH_CERT")
@@ -75,15 +80,8 @@ if IS_COCKROACHDB and "sslrootcert=" not in db_url:
 
 log.info("Database URL: %s", db_url)
 
-connect_args = (
-    {"check_same_thread": False}
-    if IS_SQLITE
-    else {}
-)
-
 engine = create_engine(
     db_url,
-    connect_args=connect_args,
     pool_pre_ping=True,
 )
 
@@ -109,42 +107,12 @@ def _is_serialization_failure(exc: Exception) -> bool:
 
 
 def init_db():
-    global engine, SessionLocal, IS_SQLITE
-
     from app import models  # noqa
 
-    try:
-        Base.metadata.create_all(bind=engine)
-
-    except Exception as exc:
-        log.warning(
-            "Primary database connection failed (%s). Falling back to SQLite.",
-            exc,
-        )
-
-        fallback = "sqlite:///./aquarack_local.db"
-
-        IS_SQLITE = True
-
-        engine = create_engine(
-            fallback,
-            connect_args={"check_same_thread": False},
-            pool_pre_ping=True,
-        )
-
-        SessionLocal = sessionmaker(
-            autocommit=False,
-            autoflush=False,
-            bind=engine,
-        )
-
-        Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
 
 
 def get_db():
-
-    global engine, SessionLocal, IS_SQLITE
-
     delay = _CRDB_RETRY_BACKOFF_MS
 
     for attempt in range(1, _CRDB_RETRY_MAX + 2):
@@ -153,51 +121,18 @@ def get_db():
 
         try:
             yield db
+            db.commit()  # Ensure commit before yield return
             return
 
         except Exception as exc:
 
+            try:
+                db.rollback()  # Ensure rollback on error
+            except Exception:
+                pass
             db.close()
 
-            if (
-                isinstance(exc, OperationalError)
-                and not IS_SQLITE
-            ):
-
-                log.warning(
-                    "CockroachDB unavailable. Switching to SQLite."
-                )
-
-                fallback = "sqlite:///./aquarack_local.db"
-
-                IS_SQLITE = True
-
-                engine = create_engine(
-                    fallback,
-                    connect_args={"check_same_thread": False},
-                    pool_pre_ping=True,
-                )
-
-                SessionLocal = sessionmaker(
-                    autocommit=False,
-                    autoflush=False,
-                    bind=engine,
-                )
-
-                Base.metadata.create_all(bind=engine)
-
-                db2 = SessionLocal()
-
-                try:
-                    yield db2
-                    return
-                finally:
-                    db2.close()
-
-            if (
-                _is_serialization_failure(exc)
-                and attempt <= _CRDB_RETRY_MAX
-            ):
+            if _is_serialization_failure(exc) and attempt <= _CRDB_RETRY_MAX:
 
                 log.warning(
                     "Serialization failure. Retrying (%d/%d)",

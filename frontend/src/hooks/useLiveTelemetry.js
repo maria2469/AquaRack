@@ -2,14 +2,14 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { getEnterpriseDashboard } from "../lib/api";
 
 /**
- * Polls GET /api/dashboard on an interval (default 5s).
- * This is the enterprise dashboard endpoint served by enterprise_api.py.
+ * Fetches GET /api/dashboard only on mount and manual refresh.
+ * Removed automatic polling to reduce excessive API calls and timeouts.
  *
  * Maps the backend response to a shape that includes `latest_telemetry`
  * so Dashboard.jsx can destructure it consistently, whether live or in
  * demo mode (backend unreachable).
  */
-export function useLiveTelemetry({ intervalMs = 5000 } = {}) {
+export function useLiveTelemetry({ intervalMs = 0 } = {}) {  // Disabled auto-polling by default
   const [data, setData] = useState(null);
   const [status, setStatus] = useState("connecting"); // connecting | live | mock | error
   const mockTick = useRef(0);
@@ -107,8 +107,11 @@ export function useLiveTelemetry({ intervalMs = 5000 } = {}) {
 
   useEffect(() => {
     fetchOnce();
-    const id = setInterval(fetchOnce, intervalMs);
-    return () => clearInterval(id);
+    // Only enable polling if intervalMs is explicitly set (disabled by default)
+    if (intervalMs > 0) {
+      const id = setInterval(fetchOnce, intervalMs);
+      return () => clearInterval(id);
+    }
   }, [fetchOnce, intervalMs]);
 
   return { data, status, refresh: fetchOnce };

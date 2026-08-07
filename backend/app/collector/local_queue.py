@@ -1,52 +1,64 @@
 """
-Local SQLite fallback queue (SDD FR-1.3 / Section 14.2).
+CockroachDB-based telemetry queue.
 Buffers telemetry readings if the API is unreachable and replays them,
 in order, once connectivity returns.
 """
 import json
-import sqlite3
-from contextlib import closing
+from datetime import datetime
+from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+from contextlib import contextmanager
+
+Base = declarative_base()
 
 
-class LocalQueue:
-    def __init__(self, db_path: str = "./collector_queue.db"):
-        self.db_path = db_path
+class QueueItem(Base):
+    __tablename__ = "telemetry_queue"
+    
+    id = Column(Integer, primary_key=True)
+    payload = Column(String, nullable=False)
+    created_at = Column(DateTime, nullable=False)
+
+
+class CockroachDBQueue:
+    def __init__(self, engine):
+        self.engine = engine
+        self.SessionLocal = sessionmaker(bind=engine)
         self._init_db()
-
+    
     def _init_db(self):
-        with closing(sqlite3.connect(self.db_path)) as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS queue (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    payload TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
-            conn.commit()
-
+        Base.metadata.create_all(bind=self.engine)
+    
+    @contextmanager
+    def _get_session(self):
+        session = self.SessionLocal()
+        try:
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+    
     def enqueue(self, payload: dict):
-        with closing(sqlite3.connect(self.db_path)) as conn:
-            conn.execute(
-                "INSERT INTO queue (payload, created_at) VALUES (?, ?)",
-                (json.dumps(payload), payload.get("timestamp", "")),
+        with self._get_session() as session:
+            item = QueueItem(
+                payload=json.dumps(payload),
+                created_at=datetime.utcnow()
             )
-            conn.commit()
-
+            session.add(item)
+    
     def peek_batch(self, limit: int = 50):
-        with closing(sqlite3.connect(self.db_path)) as conn:
-            cur = conn.execute(
-                "SELECT id, payload FROM queue ORDER BY id ASC LIMIT ?", (limit,)
-            )
-            return [(row[0], json.loads(row[1])) for row in cur.fetchall()]
-
+        with self._get_session() as session:
+            items = session.query(QueueItem).order_by(QueueItem.id.asc()).limit(limit).all()
+            return [(item.id, json.loads(item.payload)) for item in items]
+    
     def remove(self, row_id: int):
-        with closing(sqlite3.connect(self.db_path)) as conn:
-            conn.execute("DELETE FROM queue WHERE id = ?", (row_id,))
-            conn.commit()
-
+        with self._get_session() as session:
+            session.query(QueueItem).filter(QueueItem.id == row_id).delete()
+    
     def size(self) -> int:
-        with closing(sqlite3.connect(self.db_path)) as conn:
-            cur = conn.execute("SELECT COUNT(*) FROM queue")
-            return cur.fetchone()[0]
+        with self._get_session() as session:
+            return session.query(QueueItem).count()

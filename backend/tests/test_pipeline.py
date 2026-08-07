@@ -1,12 +1,11 @@
 """
 End-to-end smoke tests for the Phase 1 monolith: ingest telemetry -> run
 digital twin/water model -> get an AI recommendation -> search memory.
-Uses an isolated on-disk SQLite DB so it never touches a developer's real
-aquamind_phase1.db.
+Uses CockroachDB for testing.
 """
 import os
 
-os.environ["DATABASE_URL"] = "sqlite:///./test_aquamind.db"
+os.environ["DATABASE_URL"] = os.getenv("DATABASE_URL", "cockroachdb+psycopg://test:test@localhost:26257/test_db?sslmode=disable")
 os.environ["OLLAMA_ENABLED"] = "false"
 
 import pytest
@@ -23,12 +22,8 @@ client.__enter__()
 @pytest.fixture(autouse=True, scope="module")
 def _cleanup():
     yield
-    for f in ("test_aquamind.db",):
-        if os.path.exists(f):
-            try:
-                os.remove(f)
-            except Exception:
-                pass
+    # CockroachDB handles cleanup automatically
+    pass
 
 
 def test_health():

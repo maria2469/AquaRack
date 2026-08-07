@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     # API
     # ==========================================================
     API_HOST: str = "127.0.0.1"
-    API_PORT: int = 8004
+    API_PORT: int = 8001
     API_TOKEN: str = ""
 
     # ==========================================================
@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     # ==========================================================
     RACK_CAPACITY_KW: float = 5.0
     RACK_NODE_COUNT: int = 1
+    FLEET_SIZE: int = 100  # 100 racks: 1 laptop + 99 digital twins
+    RACK_PREFIX: str = "RACK"
 
     DEFAULT_AMBIENT_TEMP_C: float = 24.0
     DEFAULT_HUMIDITY_PCT: float = 55.0
@@ -57,9 +59,9 @@ class Settings(BaseSettings):
     # ==========================================================
     # WEATHER API / ENVIRONMENT SIMULATION
     # ==========================================================
-    WEATHER_ENABLED: bool = False
-    WEATHER_LAT: float = 31.4187
-    WEATHER_LON: float = 73.0791
+    WEATHER_ENABLED: bool = True  # Enable real weather from Open-Meteo
+    WEATHER_LAT: float = 31.4187  # Update to your actual location latitude
+    WEATHER_LON: float = 73.0791  # Update to your actual location longitude
     WEATHER_REFRESH_SECONDS: int = 900
 
     # ==========================================================
@@ -86,7 +88,7 @@ class Settings(BaseSettings):
     # AMAZON S3
     # ==========================================================
     S3_ENABLED: bool = True
-    S3_BUCKET: str = os.getenv("S3_BUCKET", "")
+    S3_BUCKET: str = os.getenv("S3_BUCKET", "rackpulse-cold-storage")
     S3_PREFIX: str = "cold"
     S3_LOCAL_FALLBACK_DIR: str = "./s3_lake"
 
@@ -96,13 +98,17 @@ class Settings(BaseSettings):
     LAMBDA_RETIER_SCHEDULE: str = "rate(1 hour)"
 
     # ==========================================================
+    # AMAZON CLOUDWATCH
+    # ==========================================================
+    CLOUDWATCH_ENABLED: bool = True
+
+    # ==========================================================
 
     # ==========================================================
     # COLLECTOR
     # ==========================================================
     DEVICE_ID: str = os.getenv("AQUARACK_DEVICE_ID", "rack-01-primary")
     POLL_INTERVAL_SECONDS: int = 30  # Increased to 30 seconds to reduce API load and prevent timeouts
-    LOCAL_QUEUE_DB: str = "./collector_queue.db"
     COLLECTOR_ENABLED: bool = False  # Temporarily disabled to ensure stable backend
 
     # ==========================================================

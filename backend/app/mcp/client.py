@@ -78,15 +78,15 @@ class CockroachMCPClient:
             return remote
         return mcp_tools.retrieve_high_gpu_events(db, threshold_pct=threshold_pct, k=k)
 
-    def store_agent_memory(self, db: Session, memory_type: str, source_id: str, summary: str) -> Dict[str, Any]:
+    def store_agent_memory(self, db: Session, memory_type: str, source_id: str, summary: str, device_id: str = "rack-01-primary") -> Dict[str, Any]:
         """Store agent memory via MCP Server."""
         remote = self._call_remote_mcp(
             "store_agent_memory",
-            {"memory_type": memory_type, "source_id": source_id, "summary": summary},
+            {"memory_type": memory_type, "source_id": source_id, "summary": summary, "device_id": device_id},
         )
         if remote is not None:
             return remote
-        return mcp_tools.store_agent_memory(db, memory_type=memory_type, source_id=source_id, summary=summary)
+        return mcp_tools.store_agent_memory(db, memory_type=memory_type, source_id=source_id, summary=summary, device_id=device_id)
 
 
 mcp_client = CockroachMCPClient()

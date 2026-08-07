@@ -60,12 +60,24 @@ class CoolPropWaterEngine:
         Computes fluid mass flow rate (kg/s), liquid circulation (L/hr),
         and latent evaporative water loss rate (L/hr) based on real fluid enthalpy.
         """
+        # Validate inputs
+        cooling_load_kw = max(0.0, cooling_load_kw)
+        inlet_temp_c = max(0.0, min(100.0, inlet_temp_c))
+        outlet_temp_c = max(0.0, min(100.0, outlet_temp_c))
+        ambient_temp_c = max(-50.0, min(60.0, ambient_temp_c))
+        relative_humidity_pct = max(0.0, min(100.0, relative_humidity_pct))
+        pressure_pa = max(1000.0, pressure_pa)
+        
         props_in = self.get_water_properties(inlet_temp_c, pressure_pa)
         props_out = self.get_water_properties(outlet_temp_c, pressure_pa)
 
         avg_cp = (props_in["cp"] + props_out["cp"]) / 2.0  # J / kg.K
         avg_density = (props_in["density"] + props_out["density"]) / 2.0  # kg / m^3
 
+        # Prevent division by zero
+        avg_cp = max(1000.0, avg_cp)  # Minimum realistic Cp
+        avg_density = max(100.0, avg_density)  # Minimum realistic density
+        
         delta_t = max(1.0, outlet_temp_c - inlet_temp_c)
         q_watts = cooling_load_kw * 1000.0
 

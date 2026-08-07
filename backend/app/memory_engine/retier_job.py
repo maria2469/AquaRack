@@ -10,17 +10,15 @@ into APScheduler — no extra infra required to see the full lifecycle work
 end-to-end, consistent with Phase 1's zero-mandatory-cloud-dependency
 principle carried into Phase 2.
 
-The "S3 export" is a local JSON file written under ./s3_lake/ standing in
-for a real S3 URI (s3://aquamind-cold-tier/...) — swap `_export_to_lake`
-for a boto3 S3 put_object call to point this at real S3 without changing
-the rest of the tiering logic.
+The S3 export uses the real Amazon S3 service when S3_ENABLED=true and
+AWS credentials are configured, with automatic local disk fallback for
+development when AWS is unavailable.
 
 Usage (from the repo root, with phase1_standalone importable):
     PYTHONPATH=phase1_standalone:. python -m phase2_distributed.memory_tiering.retier_job
 """
 from datetime import datetime, timedelta
 
-  # noqa: F401
 from app import models
 from app.database import SessionLocal
 
@@ -32,7 +30,7 @@ WARM_WINDOW = timedelta(days=90)
 
 
 def _export_to_lake(memory: models.Memory, now: datetime) -> str:
-    """Exports the cold-tier memory to real S3 (when S3_ENABLED=true and
+    """Exports the cold-tier memory to real Amazon S3 (when S3_ENABLED=true and
     boto3/credentials are available) or a local JSON fallback otherwise,
     and returns the s3:// URI recorded in cdc_export_log. See
     app.lib.s3_client for the dual-mode implementation."""
@@ -47,10 +45,10 @@ def _export_to_lake(memory: models.Memory, now: datetime) -> str:
 
 def retier_memories(db=None, now=None) -> dict:
     """
-    Re-tiers every memory row by age and exports newly-cold memories to the
-    (simulated) S3 cold tier. Returns a summary dict of counts, useful for
-    logging/tests. Safe to call repeatedly (idempotent export — a memory is
-    only exported once, tracked via CDCExportLog).
+    Re-tiers every memory row by age and exports newly-cold memories to Amazon S3
+    (or local fallback when S3 unavailable). Returns a summary dict of counts,
+    useful for logging/tests. Safe to call repeatedly (idempotent export — a
+    memory is only exported once, tracked via CDCExportLog).
     """
     own_session = db is None
     db = db or SessionLocal()

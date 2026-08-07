@@ -58,31 +58,55 @@ def _fetch_open_meteo() -> dict:
         raise ValueError("WEATHER_LAT/WEATHER_LON not configured")
 
     logger.info("Fetching live weather from Open-Meteo (lat=%s, lon=%s)", lat, lon)
-    resp = requests.get(
-        OPEN_METEO_URL,
-        params={
-            "latitude": lat,
-            "longitude": lon,
-            "current": "temperature_2m,relative_humidity_2m",
-            "timezone": "auto",
-        },
-        timeout=5,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    current = data["current"]
-    result = {
-        "temperature": float(current["temperature_2m"]),
-        "humidity": float(current["relative_humidity_2m"]),
-        "source": "open-meteo",
-        "fetched_at": datetime.now(timezone.utc).isoformat(),
-    }
-    logger.info(
-        "Open-Meteo returned REAL weather: temp=%.1f°C humidity=%.1f%%",
-        result["temperature"],
-        result["humidity"],
-    )
-    return result
+    
+    try:
+        resp = requests.get(
+            OPEN_METEO_URL,
+            params={
+                "latitude": lat,
+                "longitude": lon,
+                "current": "temperature_2m,relative_humidity_2m",
+                "timezone": "auto",
+            },
+            timeout=10,  # Increased timeout for better reliability
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        
+        # Validate response structure
+        if "current" not in data:
+            raise ValueError("Invalid Open-Meteo response structure")
+            
+        current = data["current"]
+        if "temperature_2m" not in current or "relative_humidity_2m" not in current:
+            raise ValueError("Missing required fields in Open-Meteo response")
+            
+        result = {
+            "temperature": float(current["temperature_2m"]),
+            "humidity": float(current["relative_humidity_2m"]),
+            "source": "open-meteo",
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+        }
+        
+        # Validate temperature and humidity ranges
+        if not (-50 <= result["temperature"] <= 60):
+            logger.warning(f"Unusual temperature value: {result['temperature']}°C")
+        if not (0 <= result["humidity"] <= 100):
+            logger.warning(f"Unusual humidity value: {result['humidity']}%")
+            
+        logger.info(
+            "Open-Meteo returned REAL weather: temp=%.1f°C humidity=%.1f%%",
+            result["temperature"],
+            result["humidity"],
+        )
+        return result
+        
+    except requests.exceptions.Timeout:
+        raise TimeoutError("Open-Meteo request timed out")
+    except requests.exceptions.RequestException as e:
+        raise ConnectionError(f"Open-Meteo request failed: {e}")
+    except (KeyError, ValueError, TypeError) as e:
+        raise ValueError(f"Invalid Open-Meteo response data: {e}")
 
 
 def _persist(db, weather: dict) -> None:

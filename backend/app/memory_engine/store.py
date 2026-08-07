@@ -118,27 +118,49 @@ def search_memory_embeddings_hybrid(
 
 
 def store_memory_embedding(
-    db: Session, memory_type: str, source_id: str, summary: str
+    db: Session, memory_type: str, source_id: str, summary: str, device_id: str = "rack-01-primary"
 ) -> "models.MemoryEmbedding":
-    vector, model_name = embed_text(summary)
-    row = models.MemoryEmbedding(
-        memory_type=memory_type,
-        source_id=source_id,
-        summary=summary,
-        embedding=vector,
-    )
-    db.add(row)
-    db.commit()
-    db.refresh(row)
-
-    from app.memory_engine.vector_index import sync_native_vector
+    """Store memory embedding with proper error handling and device_id support."""
     try:
-        sync_native_vector(db, row_id=row.id, vector=vector)
-    except Exception:
-        # already logged with full context inside sync_native_vector;
-        # row still exists with a valid embedding column, just not yet
-        # mirrored into vector_native for native search
-        pass
+        # Validate inputs
+        if not summary or not summary.strip():
+            raise ValueError("Summary cannot be empty")
+        if not source_id or not source_id.strip():
+            raise ValueError("Source ID cannot be empty")
+        if not memory_type or not memory_type.strip():
+            raise ValueError("Memory type cannot be empty")
+            
+        vector, model_name = embed_text(summary)
+        
+        if not vector or len(vector) == 0:
+            raise ValueError("Failed to generate embedding vector")
+            
+        row = models.MemoryEmbedding(
+            device_id=device_id,  # Add device_id with default fallback
+            memory_type=memory_type,
+            source_id=source_id,
+            summary=summary,
+            embedding=vector,
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+
+        from app.memory_engine.vector_index import sync_native_vector
+        try:
+            sync_native_vector(db, row_id=row.id, vector=vector)
+        except Exception:
+            # already logged with full context inside sync_native_vector;
+            # row still exists with a valid embedding column, just not yet
+            # mirrored into vector_native for native search
+            pass
+            
+        return row
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to store memory embedding: {e}")
+        raise
 
     return row
 

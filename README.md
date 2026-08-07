@@ -1,4 +1,4 @@
-# AquaRack — Agentic Digital Twin for Data Center Water & Cooling Optimization
+# AquaRack — 100-Rack Agentic Digital Twin for Data Center Water & Cooling Optimization
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
@@ -6,7 +6,7 @@
 [![CockroachDB](https://img.shields.io/badge/CockroachDB-6933FF?style=for-the-badge&logo=cockroachlabs&logoColor=white)](https://www.cockroachlabs.com/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-000000?style=for-the-badge&logo=langchain&logoColor=white)](https://langchain-ai.github.io/langgraph/)
 
-> **AquaRack** is an enterprise-grade Agentic Digital Twin platform designed to forecast thermal load, optimize cooling demand, and dramatically reduce cooling-water consumption (WUE) in high-density AI data centers — powered by CockroachDB as its persistent, distributed agent memory layer.
+> **AquaRack** is an enterprise-grade Agentic Digital Twin platform that scales to manage 100 racks, forecasting thermal load, optimizing cooling demand, and dramatically reducing cooling-water consumption (WUE) in high-density AI data centers — powered by CockroachDB as its persistent, distributed agent memory layer.
 
 ---
 
@@ -42,20 +42,15 @@ This project is built explicitly for the CockroachDB × AWS Hackathon, demonstra
 2. **CockroachDB Distributed Vector Indexing**: We use CockroachDB's native `VECTOR(dim)` type for our `Recommendation`, `Episode`, and `HVACManual` tables. The AI Decision Agent executes in-database semantic searches using the `<=>` cosine-distance operator to retrieve the most relevant historical incidents in milliseconds — eliminating the need for a separate, disconnected vector store.
 
 ### ☁️ AWS Services Used
-1. **Amazon Bedrock**: Integrated via LangChain to provide enterprise-grade, high-availability foundation models (Claude Sonnet 3.5) and embeddings (Amazon Titan) for our multi-agent workflow. Automatically falls back to Groq + Cohere if unavailable.
-2. **Amazon S3**: Used as a cold-tier data lake. As the CockroachDB memory layer scales, older episodic traces and thermal reports are archived to S3 (`s3://<bucket>/cold/...`).
-3. **AWS Lambda**: Scheduled serverless compute jobs that run asynchronously to pull fleet telemetry and trigger background reasoning loops.
-
-### 🎥 Demo Video
-- [Insert YouTube/Vimeo Link Here]
+1. **Amazon S3**: Used as a cold-tier data lake. As the CockroachDB memory layer scales, older episodic traces and thermal reports are archived to S3 (`s3://<bucket>/cold/...`).
+2. **AWS Lambda**: Scheduled serverless compute jobs that run asynchronously to pull fleet telemetry, trigger background reasoning loops, and manage memory lifecycle (retier_memories, generate_scheduled_report, cleanup_old_telemetry, telemetry_snapshot, resolve_episode_outcomes).
+3. **Amazon CloudWatch**: Custom metrics publishing for operational monitoring including GPUUtilisation, CoolingLoadKW, WaterSavedPct, AgentConfidence, WUEFactor, WaterLPerHr, and Lambda execution metrics.
 
 ---
 
 ## 📸 System Architecture
 
 ### Overall System Architecture
-*(Updated — no CloudWatch. Actuation layer, Operational RAG, and CockroachDB MCP Server all shown.)*
-
 ![Overall Architecture](frontend/public/overall%20architecture.png)
 
 ### Agentic Memory Flow (LangGraph ↔ CockroachDB)
@@ -68,43 +63,109 @@ This project is built explicitly for the CockroachDB × AWS Hackathon, demonstra
 
 ## 🏗️ Enterprise Technology Stack
 
-AquaRack has been architected to leverage a modern, high-performance stack focusing on multi-agent workflows, in-database vector search, and interactive 3D frontend visualisations.
+AquaRack is architected to leverage a modern, high-performance stack focusing on multi-agent workflows, in-database vector search, and interactive frontend visualizations.
 
 ### 1. AI, Reasoning & Multi-Agent Workflows
-- 🤖 **LangGraph Stateful Orchestration**: 5-stage state machine: `Monitor → Predictor → Optimizer → Action → Explainer`.
-- 🦙 **Ollama + Amazon Bedrock + Groq**: Layered LLM fallback chain for zero-downtime reasoning.
-- 🛡️ **Guardrail Critic Pattern**: Dedicated critic agent validates optimization plans before actuation.
-- 📐 **Cohere & Hybrid Search**: High-dimensional embeddings for episodic memory retrieval.
-- 🔁 **Closed-Loop Actuation**: Agent actively POSTs to `/actuation/hvac/throttle` and `/actuation/workload/migrate` to mutate real transactional state.
-- 📖 **Operational RAG**: Agent retrieves HVAC Standard Operating Procedures from CockroachDB's `hvac_manuals` table before deciding on a strategy.
+- 🤖 **LangGraph Stateful Orchestration**: 6-stage state machine: `Monitor → Predictor → Optimizer → Action → Reflect → Explainer`
+- 🦙 **Ollama + Groq**: Layered LLM fallback chain for zero-downtime reasoning (Qwen2.5:7b-instruct as primary, Groq as backup)
+- 🛡️ **Guardrail Critic Pattern**: Dedicated critic agent validates optimization plans before actuation
+- 📐 **Cohere Embeddings**: High-dimensional embeddings for episodic memory retrieval
+- 🔁 **Closed-Loop Actuation**: Agent actively POSTs to `/actuation/hvac/throttle` and `/actuation/workload/migrate` to mutate real transactional state
+- 📖 **Operational RAG**: Agent retrieves HVAC Standard Operating Procedures from CockroachDB's `hvac_manuals` table before deciding on a strategy
+- 🧠 **Visible Agent Thinking**: Step-by-step reasoning process displayed in UI with tool execution logs and decision rationale
+- 🏭 **100-Rack Fleet Orchestration**: Optimized fleet reasoning with profile-based decision scaling
 
-### 2. CockroachDB Memory Layer (Core Hackathon Feature)
-- 🔌 **Managed MCP Server**: Agents call memory tools via JSON-RPC 2.0 at every reasoning step.
-- 🧠 **Native Vector Indexing**: `VECTOR(1024)` columns on `incidents`, `recommendations`, `episodes`, and `hvac_manuals` tables with cosine similarity via `<=>` — **no separate vector database**.
-- 📦 **AWS S3 Cold Storage**: Exports archived episodic memories to S3 for long-term analysis.
-- 💾 **JobPlacement Table**: Tracks where compute workloads are running so the agent can migrate them to thermally-optimal racks.
+### 2. CockroachDB Memory Layer
+- 🔌 **Managed MCP Server**: Agents call memory tools via JSON-RPC 2.0 at every reasoning step
+- 🧠 **Native Vector Indexing**: `VECTOR(1024)` columns on `incidents`, `recommendations`, `episodes`, and `hvac_manuals` tables with cosine similarity via `<=>` — no separate vector database
+- 📦 **AWS S3 Cold Storage**: Exports archived episodic memories to S3 for long-term analysis
+- 💾 **JobPlacement Table**: Tracks where compute workloads are running so the agent can migrate them to thermally-optimal racks
+- 🏭 **Per-Rack Memory Isolation**: Each of the 100 racks has its own memory, episodes, and recommendations with device_id-based separation
 
 ### 3. Backend Engine & Thermodynamic Simulation
-- ⚡ **FastAPI & Psycopg 3**: High-performance async API with SSE for live agent trace streaming.
-- 💧 **CoolProp Thermodynamic Engine**: Converts thermal kW loads into evaporative water consumption (L/hr) using psychrometric equations.
+- ⚡ **FastAPI & Psycopg 3**: High-performance async API with SSE for live agent trace streaming
+- 💧 **CoolProp Thermodynamic Engine**: Converts thermal kW loads into evaporative water consumption (L/hr) using psychrometric equations
 
-### 4. Interactive 3D Frontend
-- ⚛️ **React 19 & Vite 8**: Modern frontend with live SSE reasoning console.
-- 🎨 **TailwindCSS v4 & Framer Motion**: Sleek animated UI.
-- 🧊 **React Three Fiber & Drei**: Real-time interactive 3D rack visualizations.
+### 4. Interactive Frontend
+- ⚛️ **React 19 & Vite 8**: Modern frontend with live SSE reasoning console
+- 🎨 **TailwindCSS v4 & Framer Motion**: Sleek animated UI
+- 🧊 **React Three Fiber & Drei**: Real-time interactive 3D rack visualizations
 
 ---
 
 ## ✨ Core Features
 
-- 🛰️ **Real-Time Telemetry Daemon**: 5-second polling with SQLite local buffer replay on disconnects.
-- 🏢 **Digital Twin Engine**: Maps single-device compute load onto synthetic rack profiles.
-- 💧 **Thermodynamic Water Model**: WUE + PUE + psychrometric equations → L/hr predictions.
-- 🤖 **LangGraph Multi-Agent Reasoning**: Retrieves historical precedents from CockroachDB before every decision.
-- 📖 **Operational RAG**: Agent reads HVAC SOPs from CockroachDB vector memory to inform strategy.
-- 🔁 **Closed-Loop Actuation**: Agent actively throttles HVAC or migrates workloads — not just recommends.
-- 🖥️ **Live SSE Reasoning Console**: Watch every agent thought stream in real-time in the dashboard UI.
-- 🛡️ **Zero Mandatory Cloud Dependency**: SQLite fallback + local inference for offline functionality.
+- 🛰️ **Real-Time Telemetry Ingestion**: Continuous monitoring with CockroachDB persistence
+- 🏢 **Digital Twin Engine**: Maps single-device compute load onto 100 synthetic rack profiles
+- 💧 **Thermodynamic Water Model**: WUE + PUE + psychrometric equations → L/hr predictions
+- 🤖 **LangGraph Multi-Agent Reasoning**: Retrieves historical precedents from CockroachDB before every decision
+- 📖 **Operational RAG**: Agent reads HVAC SOPs from CockroachDB vector memory to inform strategy
+- 🔁 **Closed-Loop Actuation**: Agent actively throttles HVAC or migrates workloads — not just recommends
+- 🖥️ **Live SSE Reasoning Console**: Watch every agent thought stream in real-time in the dashboard UI
+- 🏭 **100-Rack Fleet Management**: Optimized fleet reasoning across 100 racks (1 laptop + 99 digital twins)
+- ⚡ **Optimized Fleet Reasoning**: Run agent decision-making once and apply to all 100 racks (profile-based scaling)
+- 🧠 **Visible Agent Thinking**: Step-by-step reasoning process displayed in UI with tool execution logs
+
+---
+
+## 🎯 Key Capabilities
+
+### 🤖 True Agentic Backend with Visible Thinking
+Each agent operates as a true AI agent with comprehensive tool usage and transparent reasoning:
+
+**Agent Architecture:**
+- **Monitor Agent**: Telemetry analysis, hybrid vector search, episode retrieval
+- **Predictor Agent**: Risk assessment using LLM with historical context
+- **Optimizer Agent**: Strategy computation with memory blending and confidence scoring
+- **Action Agent**: Safety validation, guardrail checks, actuation execution, memory storage
+- **Reflect Agent**: Episode creation for reinforcement learning
+- **Explainer Agent**: Decision audit and explanation assembly
+
+**Tool Assignment:**
+- Monitor: `hybrid_search_incidents`, `retrieve_similar_episodes`
+- Action: `ccloud_cluster_health`, `actuation_api`, `store_agent_memory`
+- Optimizer: `retrieve_hvac_manual`, StrategyScore queries
+- All Agents: LLM calls (Ollama/Groq) with detailed logging
+
+**Visible Thinking Process:**
+- Step-by-step reasoning displayed in UI with emoji-coded phases (🔍, 🧠, ⚙️, 🤖, 🔄, 📝)
+- Tool execution logs with parameters and results
+- Raw LLM responses and provider information
+- Decision rationale with confidence scores
+- Expandable details for deep dive into agent reasoning
+
+**State Management:**
+- Agents share state through LangGraph workflow
+- Comprehensive agent trace available in real-time
+- Decision audit trail for accountability
+
+### 🏭 Fleet-Wide Intelligence
+- **Single-Click Fleet Reasoning**: Run reasoning for all 100 racks in 30-60 seconds
+- **Profile-Based Scaling**: Apply decisions across racks using hardware profile multipliers
+- **Fleet-Wide Metrics**: Total water savings, average confidence, success rates
+- **Per-Rack Learning**: Each rack maintains its own memory and episodes
+- **Scalable Architecture**: Profile-based approach scales to 1000+ racks
+
+---
+
+## 🏭 Fleet Management
+
+### 100-Rack Fleet Architecture
+AquaRack manages a fleet of 100 racks efficiently:
+- **Rack 1**: Real laptop telemetry (exact mirror)
+- **Racks 2-100**: Digital twins with unique hardware profiles (CPU factor: 0.85-1.15, GPU factor: 0.85-1.15, RAM factor: 0.90-1.10, cooling efficiency: 0.90-1.05, hardware age: 0.95-1.20)
+
+### Fleet Reasoning Performance
+- **Approach**: Run agent decision-making once for the laptop, then apply to all 99 digital twins using profile multipliers
+- **Performance**: Fleet-wide decision making in 30-60 seconds (vs hours for per-rack reasoning)
+- **Scaling**: Profile-based approach scales efficiently to 1000+ racks
+
+### Per-Rack Memory Isolation
+Each of the 100 racks maintains its own:
+- **MemoryEmbeddings**: Vector memories specific to that rack's device_id
+- **Episodes**: RL learning episodes per rack with outcome tracking
+- **Recommendations**: Rack-specific optimization strategies
+- **Incidents**: Rack-specific incident history
 
 ---
 
@@ -113,8 +174,8 @@ AquaRack has been architected to leverage a modern, high-performance stack focus
 | Tool | Description |
 |------|-------------|
 | `retrieve_similar_incidents` | Retrieves past thermal/water incidents by semantic vector via CockroachDB `<=>` cosine search |
-| `retrieve_similar_episodes` | Searches historical agent episodes and optimization outcomes |
-| `store_agent_memory` | Persists new events, recommendations, and outcomes into CockroachDB vector memory |
+| `retrieve_similar_episodes` | Searches historical agent episodes and optimization outcomes for RL priors |
+| `store_agent_memory` | Persists new events, recommendations, and outcomes into CockroachDB vector memory with device_id isolation |
 | `ccloud_cluster_health` | Allows agent to inspect live CockroachDB Cloud cluster status |
 | `retrieve_hvac_manual` | Operational RAG — retrieves HVAC SOP sections matching a semantic query |
 
@@ -125,9 +186,12 @@ AquaRack has been architected to leverage a modern, high-performance stack focus
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET`  | `/api/v1/dashboard/summary`           | Current telemetry, water models, incident counts |
-| `GET`  | `/api/v1/agent/trace/stream`          | **Live SSE stream** of agent reasoning (used by dashboard console) |
+| `GET`  | `/api/v1/agent/trace/stream`          | Live SSE stream of agent reasoning (used by dashboard console) |
 | `GET`  | `/api/v1/agent/trace/recent`          | Polling fallback for recent reasoning events |
 | `POST` | `/api/reason`                         | Execute full LangGraph Multi-Agent pipeline |
+| `POST` | `/api/v1/fleet/reason`                | Run fleet reasoning across 100 racks with profile-based scaling |
+| `GET`  | `/api/v1/fleet/status`                | Get current status of all 100 racks in the fleet |
+| `GET`  | `/api/v1/fleet/summary`               | Fleet-wide statistics and aggregated metrics |
 | `POST` | `/api/v1/actuation/hvac/throttle`     | Closed-loop HVAC control (fan RPM + chiller setpoint) |
 | `POST` | `/api/v1/actuation/workload/migrate`  | Migrate compute workload to a cooler rack |
 | `POST` | `/mcp/rpc`                            | JSON-RPC 2.0 CockroachDB Managed MCP Server endpoint |
@@ -166,6 +230,16 @@ cd frontend
 npm install
 npm run dev
 ```
+
+### 4. Running Fleet Reasoning
+- **Single Rack**: Go to Dashboard → Click "Run Agent Reasoning"
+- **100-Rack Fleet**: Go to Fleet View → Click "Run Optimized Fleet"
+- **Benchmark**: Go to Benchmark page → Run comparison with fleet results
+
+### Configuration
+- Fleet size: Set `FLEET_SIZE` in `backend/app/config.py` (default: 100)
+- Device ID: Automatically managed per rack for memory isolation
+- Profile variations: Generated deterministically per rack ID
 
 ---
 

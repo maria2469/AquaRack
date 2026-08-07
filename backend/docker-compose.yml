@@ -5,8 +5,7 @@
 #        http://localhost:8080            (CockroachDB Admin UI)
 #        http://localhost:8000/api/v1/agent/trace/stream  (live agent reasoning, SSE)
 #
-# To enable Bedrock reasoning (on by default, see app/config.py), supply
-# AWS credentials via a .env file at the repo root or an AWS profile.
+# To enable AWS services (S3, CloudWatch), supply AWS credentials via .env file
 
 version: "3.9"
 

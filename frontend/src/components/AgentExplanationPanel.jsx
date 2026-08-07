@@ -80,6 +80,7 @@ export default function AgentExplanationPanel({
     confidence_pct,
     matched_memories_count,
     historical_evidence = [],
+    agent_trace = [],
   } = display;
 
   const gpuDisplay = liveGpu != null ? `${Number(liveGpu).toFixed(1)}%` : "—";
@@ -183,6 +184,79 @@ export default function AgentExplanationPanel({
                       <FileText size={11} /> {ev.memory_id}
                     </div>
                     <p className="text-[11px] text-fog line-clamp-2 leading-tight">{ev.summary}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Display Agent Thinking Process */}
+          {display.agent_trace && display.agent_trace.length > 0 && (
+            <div className="mt-4">
+              <span className="text-[10px] font-mono text-flow uppercase tracking-wider block mb-2 font-semibold">
+                🧠 Agent Thinking Process
+              </span>
+              <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
+                {display.agent_trace.map((trace, idx) => (
+                  <div key={idx} className="rounded-lg bg-hall-2 border border-rack p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-[10px] font-mono text-amber font-semibold">
+                        {trace.agent}
+                      </span>
+                      {trace.thinking && (
+                        <button
+                          onClick={() => {
+                            const modal = document.createElement('div');
+                            modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4';
+                            modal.innerHTML = `
+                              <div class="bg-abyss border border-rack rounded-xl p-4 max-w-2xl max-h-[80vh] overflow-y-auto">
+                                <div class="flex justify-between items-center mb-3">
+                                  <h3 class="font-heading font-semibold text-frost">${trace.agent} Thinking</h3>
+                                  <button onclick="this.parentElement.parentElement.parentElement.remove()" class="text-mist hover:text-frost">✕</button>
+                                </div>
+                                <pre class="text-xs text-fog font-mono whitespace-pre-wrap">${trace.thinking}</pre>
+                              </div>
+                            `;
+                            document.body.appendChild(modal);
+                          }}
+                          className="text-[9px] text-flow hover:text-fog cursor-pointer"
+                        >
+                          🔍 View Details
+                        </button>
+                      )}
+                    </div>
+                    
+                    {/* Show key decision points */}
+                    {trace.predictions && (
+                      <div className="text-[11px] text-fog mb-1">
+                        <span className="text-amber font-semibold">Risk:</span> {trace.predictions.risk_level}
+                        <span className="ml-2 text-mist">|</span>
+                        <span className="text-signal">{(trace.predictions.predicted_pue_impact * 100).toFixed(0)}% PUE Impact</span>
+                      </div>
+                    )}
+                    
+                    {trace.plan && (
+                      <div className="text-[11px] text-fog mb-1">
+                        <span className="text-signal font-semibold">Strategy:</span> {trace.plan.recommendation?.substring(0, 60)}...
+                        <span className="ml-2 text-mist">|</span>
+                        <span className="text-flow">{(trace.plan.confidence * 100).toFixed(0)}% Confidence</span>
+                      </div>
+                    )}
+                    
+                    {trace.result && (
+                      <div className="text-[11px] text-fog mb-1">
+                        <span className="text-coolant font-semibold">Action:</span> {trace.result.guardrail_passed ? '✅ Passed' : '❌ Failed'}
+                        <span className="ml-2 text-mist">|</span>
+                        <span className="text-flow">{(trace.result.final_confidence * 100).toFixed(0)}% Final Confidence</span>
+                      </div>
+                    )}
+                    
+                    {trace.thinking && (
+                      <div className="text-[10px] text-mist font-mono mt-2 p-2 bg-hall-3 rounded border border-rack/30">
+                        {trace.thinking.split('\n').slice(0, 3).join('\n')}
+                        {trace.thinking.split('\n').length > 3 && '...'}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

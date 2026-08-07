@@ -67,8 +67,8 @@ class Episode(Base):
     episode_id = Column(String, primary_key=True, default=_uuid)
     run_id = Column(String, nullable=False, index=True)
     device_id = Column(String, nullable=False, index=True)  # Device-specific episode isolation
-    rack_id = Column(String, ForeignKey("racks.rack_id"), nullable=True)
-    recommendation_id = Column(String, ForeignKey("recommendations.recommendation_id"), nullable=True)
+    rack_id = Column(String, nullable=True)  # No foreign key to avoid constraints during fleet reasoning
+    recommendation_id = Column(String, nullable=True)  # No foreign key to avoid constraints
     telemetry_snapshot = Column(JSON, nullable=False)
     water_snapshot = Column(JSON, nullable=False)
     weather_snapshot = Column(JSON, nullable=True)
@@ -109,7 +109,7 @@ class JobPlacement(Base):
     """Tracks workloads migrating between racks."""
     __tablename__ = "job_placements"
     job_id = Column(String, primary_key=True, default=_uuid)
-    rack_id = Column(String, ForeignKey("racks.rack_id"), nullable=False, index=True)
+    rack_id = Column(String, nullable=False, index=True)  # No foreign key to avoid constraints
     workload_type = Column(String, nullable=False) # e.g., "LLM Inference"
     cpu_cores = Column(Integer, default=1)
     gpu_count = Column(Integer, default=1)
@@ -124,3 +124,37 @@ class HVACManual(Base):
     content = Column(String, nullable=False)
     embedding = Column(JSON, nullable=True) # Will be mapped to VECTOR natively in setup
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class RackReasoningResult(Base):
+    """Stores rack reasoning results for fleet dashboard persistence."""
+    __tablename__ = "rack_reasoning_results"
+    result_id = Column(String, primary_key=True, default=_uuid)
+    rack_id = Column(String, nullable=False, index=True)
+    device_id = Column(String, nullable=False)
+    is_laptop = Column(Boolean, nullable=False, default=False)
+    success = Column(Boolean, nullable=False, default=False)
+    
+    # Profile factors
+    cpu_factor = Column(Float, nullable=True)
+    gpu_factor = Column(Float, nullable=True)
+    ram_factor = Column(Float, nullable=True)
+    cooling_efficiency = Column(Float, nullable=True)
+    hardware_age = Column(Float, nullable=True)
+    
+    # Recommendation results
+    recommendation = Column(String, nullable=True)
+    rationale = Column(String, nullable=True)
+    expected_water_saving = Column(Float, nullable=True)
+    confidence = Column(Float, nullable=True)
+    
+    # Timing and metadata
+    reasoning_time_ms = Column(Float, nullable=True)
+    run_id = Column(String, nullable=True, index=True)
+    
+    # Full API response and reasoning logs
+    api_response = Column(JSON, nullable=True)
+    reasoning_logs = Column(JSON, nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

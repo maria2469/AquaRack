@@ -132,18 +132,8 @@ ALLOWED_ORIGIN_REGEX = r"^https://aqua-rack(-[a-zA-Z0-9\-]+)?\.vercel\.app$"
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://localhost:5175",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5174",
-        "http://127.0.0.1:5175",
-        "https://aqua-rack.vercel.app",
-        "https://aqua-rack-z42shl04s-marias-projects-76dd7319.vercel.app"
-    ],
-    allow_origin_regex=ALLOWED_ORIGIN_REGEX,
-    allow_credentials=True,
+    allow_origins=["*"],  # Allow all origins for development
+    allow_credentials=True,  # Enable credentials
     allow_methods=["*"],
     allow_headers=["*"],
 )

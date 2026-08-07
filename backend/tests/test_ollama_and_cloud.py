@@ -8,7 +8,7 @@ import pytest
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
-os.environ["DATABASE_URL"] = "sqlite:///./test_aquamind_cloud.db"
+os.environ["DATABASE_URL"] = os.getenv("DATABASE_URL", "cockroachdb+psycopg://test:test@localhost:26257/test_db?sslmode=disable")
 os.environ["OLLAMA_ENABLED"] = "true"
 os.environ["AQUAMIND_SKIP_CLOUDWATCH"] = "1"  # prevent watchtower init in test process
 
@@ -32,11 +32,8 @@ from app.observability.cloudwatch_metrics import publish_telemetry_metrics, publ
 def setup_db():
     init_db()
     yield
-    if os.path.exists("test_aquamind_cloud.db"):
-        try:
-            os.remove("test_aquamind_cloud.db")
-        except Exception:
-            pass
+    # CockroachDB handles cleanup automatically
+    pass
 
 
 # ---------------------------------------------------------------------------

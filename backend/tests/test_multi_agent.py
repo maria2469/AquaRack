@@ -2,12 +2,12 @@
 End-to-end smoke tests for the Phase 2 combined gateway: fleet batch
 ingest -> sites -> OpenDC simulation job (submit + poll to completion) ->
 multi-agent recommend -> recommendations list -> feedback -> fleet
-summary -> memory tiering job. Uses an isolated on-disk SQLite DB.
+summary -> memory tiering job. Uses CockroachDB.
 """
 import os
 import time
 
-os.environ["DATABASE_URL"] = "sqlite:///./test_aquamind_multi_agent.db"
+os.environ["DATABASE_URL"] = os.getenv("DATABASE_URL", "cockroachdb+psycopg://test:test@localhost:26257/test_db?sslmode=disable")
 os.environ["OLLAMA_ENABLED"] = "false"
 
 import pytest
@@ -22,9 +22,8 @@ client.__enter__()
 @pytest.fixture(autouse=True, scope="module")
 def _cleanup():
     yield
-    for f in ("test_aquamind_phase2.db",):
-        if os.path.exists(f):
-            os.remove(f)
+    # CockroachDB handles cleanup automatically
+    pass
 
 
 def test_health():

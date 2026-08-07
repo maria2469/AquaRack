@@ -28,6 +28,7 @@ from app.agents.orchestrator import orchestrator
 from app.routers.simulate import run_full_pipeline
 from app.water_model.thermo import WaterModel
 from app.digital_twin.opendc_adapter import simulate_scaled_racks
+from app.utils.device_id import get_or_create_device_id
 from app.services.weather_services import get_current_weather
 from app.db_retry import crdb_retry
 from app.utils.device_id import get_or_create_device_id, validate_device_id
@@ -35,18 +36,6 @@ from app.utils.device_id import get_or_create_device_id, validate_device_id
 logger = logging.getLogger("aquarack.enterprise_api")
 
 router = APIRouter(prefix="/api", tags=["enterprise"])
-
-
-def get_device_id(request: Request) -> str:
-    """
-    Extract device ID from request headers or generate one.
-    This dependency ensures data isolation between different devices.
-    """
-    # Try to get device ID from headers
-    device_id = request.headers.get("X-Device-ID") or request.headers.get("Device-ID")
-    
-    # Validate and return
-    return get_or_create_device_id(device_id)
 
 
 def _log_weather_provenance(context: str, *, source: str = None, ambient_temp: float = None,
@@ -144,12 +133,26 @@ def get_latest_telemetry(db: Session = Depends(get_db)):
         db.commit()
         db.refresh(row)
     else:
-        _log_weather_provenance(
-            "telemetry/latest (existing row)",
-            source="telemetry_attached" if row.weather_temp is not None else "missing_on_row",
-            ambient_temp=row.weather_temp,
-            humidity=row.humidity,
-        )
+        # Use cached weather (15-minute cache) to avoid excessive API calls
+        # Only refresh if weather data is missing
+        if row.weather_temp is None or row.humidity is None:
+            weather = get_current_weather(db)
+            row.weather_temp = weather["temperature"]
+            row.humidity = weather["humidity"]
+            db.commit()
+            _log_weather_provenance(
+                "telemetry/latest (existing row - weather attached)",
+                source=weather["source"],
+                ambient_temp=weather["temperature"],
+                humidity=weather["humidity"],
+            )
+        else:
+            _log_weather_provenance(
+                "telemetry/latest (existing row - using cached weather)",
+                source="telemetry_attached",
+                ambient_temp=row.weather_temp,
+                humidity=row.humidity,
+            )
     return {
         "telemetry_id": row.telemetry_id,
         "rack_id": row.rack_id or "Rack-1 (Laptop)",
@@ -188,6 +191,7 @@ def list_incidents(
             humidity=weather["humidity"],
         )
         inc = models.Incident(
+            device_id=t_row.device_id if t_row else "rack-01-primary",  # Add device_id from telemetry
             telemetry_id=t_row.telemetry_id if t_row else None,
             severity="HIGH",
             description=f"Thermal spike detected on Rack-1 GPU under high ambient weather ({weather['temperature']:.1f}°C)",
@@ -204,7 +208,8 @@ def list_incidents(
             root_cause=inc.root_cause,
             created_at=inc.created_at.isoformat(),
         )
-        mcp_client.store_agent_memory(db, "incident", inc.incident_id, summary)
+        device_id = t_row.device_id if t_row else "rack-01-primary"
+        mcp_client.store_agent_memory(db, "incident", inc.incident_id, summary, device_id=device_id)
         incidents = [inc]
 
     return [
@@ -246,6 +251,7 @@ def list_recommendations(
 @router.get("/reason")
 def generate_agent_reasoning(
     body: Dict[str, Any] = Body(default={}),
+    request: Request = None,  # Optional for backward compatibility
     db: Session = Depends(get_db),
 ):
     """
@@ -257,10 +263,21 @@ def generate_agent_reasoning(
     """
     telemetry_id = body.get("telemetry_id")
     use_memory = body.get("use_memory", True)
+    
+    # Get device_id from request to ensure consistency with memory queries
+    device_id = get_or_create_device_id(request.headers.get("X-Device-ID") if request else None)
+    
+    logger.info(
+        f"POST /api/reason - telemetry_id={telemetry_id} use_memory={use_memory} device_id={device_id}"
+    )
+    
     pipeline = run_full_pipeline(db, telemetry_id)
     reading = pipeline["reading"]
     twin_state = pipeline["twin_state"]
     water_out = pipeline["water_out"]
+    
+    # The pipeline already handles device_id correctly through the telemetry system
+    # No need to override device_id on twin_state (it doesn't have that field)
 
     open_incidents = db.query(models.Incident).filter(models.Incident.resolved.is_(False)).count()
 
@@ -298,6 +315,7 @@ def generate_agent_reasoning(
     inc_row = None
     if use_memory and ((reading.gpu_pct or 0) > 75 or (reading.cpu_pct or 0) > 80):
         inc_row = models.Incident(
+            device_id=reading.device_id,  # Add device_id from telemetry reading
             telemetry_id=reading.telemetry_id,
             severity="HIGH" if (reading.gpu_pct or 0) > 85 else "WARN",
             description=f"GPU utilization at {reading.gpu_pct:.1f}% with weather temp {ambient_temp:.1f}°C",
@@ -314,7 +332,7 @@ def generate_agent_reasoning(
             rack_id=reading.rack_id,
             created_at=inc_row.created_at.isoformat(),
         )
-        mcp_client.store_agent_memory(db, "incident", inc_row.incident_id, summary)
+        mcp_client.store_agent_memory(db, "incident", inc_row.incident_id, summary, device_id=reading.device_id)
 
     rec_text = result["recommendation"]
     confidence_score = result["confidence"]
@@ -323,6 +341,7 @@ def generate_agent_reasoning(
     rec_row = None
     if use_memory:
         rec_row = models.Recommendation(
+            device_id=reading.device_id,  # Add device_id from telemetry reading
             telemetry_id=reading.telemetry_id,
             incident_id=inc_row.incident_id if inc_row else None,
             text=rec_text,
@@ -341,6 +360,7 @@ def generate_agent_reasoning(
             memory_type="recommendation",
             source_id=rec_row.recommendation_id,
             summary=f"Recommendation: {rec_text} | Water Saving: {expected_saving}% | Confidence: {confidence_score*100:.1f}%",
+            device_id=reading.device_id,  # Pass device_id from telemetry reading
         )
 
     citations = _resolve_historical_citations(db, result.get("cited_memory_ids", [])) if use_memory else []
@@ -368,6 +388,7 @@ def generate_agent_reasoning(
         "created_at": rec_row.created_at.isoformat() if rec_row else datetime.utcnow().isoformat(),
         "rationale": result.get("rationale"),
         "agent_name": result.get("agent_name"),
+        "agent_trace": result.get("agent_trace", []),  # Include agent thinking process
     }
 
 
@@ -657,11 +678,14 @@ def search_memory(
 @router.get("/memory/history")
 def get_memory_history(
     limit: int = Query(100, ge=1, le=500),
-    device_id: str = Depends(get_device_id),
+    request: Request = None,
     db: Session = Depends(get_db),
 ):
     """GET /api/memory/history - Retrieve recent persistent memories for the current device."""
     try:
+        # Get device_id from request
+        device_id = get_or_create_device_id(request.headers.get("X-Device-ID") if request else None)
+        
         # Log the query parameters
         logger.info(f"Fetching memory history with limit={limit}, device_id={device_id}")
         
@@ -693,11 +717,14 @@ def get_memory_history(
 
 @router.get("/memory/comprehensive")
 def get_comprehensive_memory_stats(
-    device_id: str = Depends(get_device_id),
+    request: Request = None,
     db: Session = Depends(get_db),
 ):
     """GET /api/memory/comprehensive - Get comprehensive memory and episode statistics for the current device."""
     try:
+        # Get device_id from request
+        device_id = get_or_create_device_id(request.headers.get("X-Device-ID") if request else None)
+        
         # Memory statistics
         total_memories = db.query(func.count(models.MemoryEmbedding.id)).filter(models.MemoryEmbedding.device_id == device_id).scalar()
         recommendation_memories = db.query(func.count(models.MemoryEmbedding.id)).filter(

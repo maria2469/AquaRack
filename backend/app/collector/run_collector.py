@@ -16,10 +16,10 @@ import time
 
 from app.config import settings
 from app.collector.normalizer import collect_raw_reading, normalize
-from app.collector.local_queue import LocalQueue
+from app.collector.local_queue import CockroachDBQueue
 from app.collector.client import IngestionClient
 from app.services.weather_services import get_current_weather
-from app.database import SessionLocal
+from app.database import SessionLocal, engine
 from app.utils.device_id import generate_device_id
 
 logger = logging.getLogger("aquamind.collector")
@@ -28,7 +28,7 @@ logger = logging.getLogger("aquamind.collector")
 def run(api_base_url: str = None, stop_event=None):
     # Use the correct port (8002) instead of config default
     api_base_url = api_base_url or f"http://127.0.0.1:8002"
-    queue = LocalQueue(settings.LOCAL_QUEUE_DB)
+    queue = CockroachDBQueue(engine)
     
     # Use a consistent device ID for this machine
     device_id = generate_device_id()

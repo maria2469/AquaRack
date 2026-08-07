@@ -5,10 +5,10 @@ import { ArrowUpRightIcon } from "./ui/icons";
 
 const links = [
   { to: "/", label: "Home", end: true },
-  { to: "/dashboard", label: "Dashboard" },
-  { to: "/memory", label: "Memory" },
+  { to: "/dashboard", label: "Live Dashboard" },
+  { to: "/fleet", label: "Fleet Management" },
+  { to: "/memory", label: "Memory & Analytics" },
   { to: "/compare", label: "Benchmark" },
-  { to: "/fleet", label: "Fleet" },
   { to: "/about", label: "About" },
 ];
 
@@ -44,7 +44,7 @@ export default function Navbar() {
             to="/dashboard"
             className="ml-1 inline-flex items-center gap-1.5 rounded-full bg-white text-black px-4 py-2 text-sm font-medium font-body hover:bg-white/90 transition-colors"
           >
-            Open Dashboard <ArrowUpRightIcon size={14} />
+            Live Dashboard <ArrowUpRightIcon size={14} />
           </NavLink>
         </div>
 
@@ -79,7 +79,7 @@ export default function Navbar() {
             onClick={() => setOpen(false)}
             className="mt-2 inline-flex items-center justify-center gap-1.5 rounded-full bg-white text-black px-4 py-2.5 text-sm font-medium font-body"
           >
-            Open Dashboard <ArrowUpRightIcon size={14} />
+            Live Dashboard <ArrowUpRightIcon size={14} />
           </NavLink>
         </div>
       )}

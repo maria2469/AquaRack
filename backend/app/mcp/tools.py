@@ -189,7 +189,7 @@ def retrieve_high_gpu_events(db: Session, threshold_pct: float = 75.0, k: int = 
     ]
 
 
-def store_agent_memory(db: Session, memory_type: str, source_id: str, summary: str) -> Dict[str, Any]:
+def store_agent_memory(db: Session, memory_type: str, source_id: str, summary: str, device_id: str = "rack-01-primary") -> Dict[str, Any]:
     """MCP Tool: Persist a new memory entry + embedding into CockroachDB.
 
     Callers should pass a RICH summary (specific numbers, root cause, action taken,
@@ -199,7 +199,7 @@ def store_agent_memory(db: Session, memory_type: str, source_id: str, summary: s
     match everything.
     """
     logger.info("MCP Tool Executed: store_agent_memory(type='%s', source_id='%s')", memory_type, source_id)
-    emb = memory_store.store_memory_embedding(db, memory_type=memory_type, source_id=source_id, summary=summary)
+    emb = memory_store.store_memory_embedding(db, memory_type=memory_type, source_id=source_id, summary=summary, device_id=device_id)
     return {
         "status": "success",
         "id": emb.id,

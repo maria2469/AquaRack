@@ -136,6 +136,11 @@ class WaterModel:
         Calculates IT Thermal Load, Water Consumption (L/hr), Cooling Demand (kW),
         Cooling Cost ($/hr), and Expected Water Savings (%) using CoolProp Real Physics.
         """
+        # Validate inputs to prevent calculation errors
+        thermal_load_kw = max(0.0, thermal_load_kw)
+        cpu_pct = max(0.0, min(100.0, cpu_pct))
+        gpu_pct = max(0.0, min(100.0, gpu_pct))
+        
         effective_load = thermal_load_kw * (0.3 + 0.3 * (cpu_pct / 100.0) + 0.4 * (gpu_pct / 100.0))
         cooling_load_kw = self.compute_cooling_demand(effective_load)
         wue = self.compute_wue_factor()

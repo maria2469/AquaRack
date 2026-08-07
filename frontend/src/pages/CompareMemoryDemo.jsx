@@ -8,6 +8,7 @@ import AmbientVeil from "../components/ui/AmbientVeil";
 import ReasoningProgressBar from "../components/ReasoningProgressBar";
 import { useLiveTelemetry } from "../hooks/useLiveTelemetry";
 import { runCompareBenchmark, buildScenarioFromSimulate } from "../lib/api";
+import { getGlobalFleetResult } from "../lib/globalState";
 
 function ConnectionBadge({ status }) {
   const map = {
@@ -144,6 +145,9 @@ export default function CompareMemoryDemo() {
   const showBaseline = hasRun && withoutMemory;
   const showMemory = hasRun && withMemory;
   const progressActive = loading && phase !== "scenario";
+  
+  // Get fleet reasoning results
+  const fleetResult = getGlobalFleetResult();
 
   return (
     <div className="relative bg-abyss min-h-screen">
@@ -364,6 +368,39 @@ export default function CompareMemoryDemo() {
           </motion.div>
         </div>
       </section>
+
+      {/* Fleet Reasoning Results Section */}
+      {fleetResult && (
+        <section className="max-w-7xl mx-auto px-5 md:px-8 py-8">
+          <div className="card-glass rounded-2xl p-6 border border-flow/30">
+            <h2 className="text-xl font-heading font-semibold text-frost mb-4 flex items-center gap-2">
+              <Brain size={20} className="text-flow" />
+              Fleet Reasoning Results (100 Racks)
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+              <div>
+                <div className="text-mist text-sm">Successful Racks</div>
+                <div className="text-2xl font-bold text-signal">{fleetResult.successful_racks}/{fleetResult.fleet_size}</div>
+              </div>
+              <div>
+                <div className="text-mist text-sm">Failed Racks</div>
+                <div className="text-2xl font-bold text-alert">{fleetResult.failed_racks}</div>
+              </div>
+              <div>
+                <div className="text-mist text-sm">Total Water Savings</div>
+                <div className="text-2xl font-bold text-coolant">{fleetResult.total_expected_savings.toFixed(2)} L/hr</div>
+              </div>
+              <div>
+                <div className="text-mist text-sm">Avg Confidence</div>
+                <div className="text-2xl font-bold text-flow">{(fleetResult.avg_confidence * 100).toFixed(1)}%</div>
+              </div>
+            </div>
+            <div className="text-xs text-mist font-mono">
+              Run the reasoning loop from the Dashboard to generate fleet-wide results.
+            </div>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

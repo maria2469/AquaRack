@@ -85,7 +85,7 @@ def run_full_pipeline(db: Session, telemetry_id: str = None) -> dict:
             rack_id=reading.rack_id,
             created_at=incident.created_at.isoformat(),
         )
-        mcp_client.store_agent_memory(db, "incident", incident.incident_id, summary)
+        mcp_client.store_agent_memory(db, "incident", incident.incident_id, summary, device_id=reading.device_id)
 
     db.commit()
     db.refresh(wm_row)
