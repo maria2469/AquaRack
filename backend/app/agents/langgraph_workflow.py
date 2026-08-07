@@ -37,6 +37,7 @@ class AgentState(TypedDict):
     twin_dict: Dict[str, Any]
     water_out: Dict[str, Any]
     open_incidents: int
+    use_memory: bool
     retrieved_memories: List[Dict[str, Any]]
     episode_priors: List[Dict[str, Any]]   # Task 7: similar historical episodes
     cluster_health: Dict[str, Any]
@@ -56,7 +57,13 @@ def monitor_node(state: AgentState) -> AgentState:
     twin = state["twin_dict"]
     water = state["water_out"]
 
-    rl.log_step(run_id, "MonitorAgent", "input", {"note": "Ingesting telemetry and retrieving context"})
+    use_memory = state.get("use_memory", True)
+    rl.log_step(
+        run_id,
+        "MonitorAgent",
+        "input",
+        {"note": "Ingesting telemetry" + (" and retrieving context" if use_memory else " (memory disabled)")},
+    )
 
     query_text = (
         f"utilisation {twin.get('utilisation_pct')}% thermal load {twin.get('thermal_load_kw')}kW "
@@ -64,23 +71,34 @@ def monitor_node(state: AgentState) -> AgentState:
     )
 
     rack_id = twin.get("rack_id", "rack-01")
-    search_res = hybrid_search_incidents(db, query_text=query_text, rack_id=rack_id, k=5)
-    memories = search_res.get("matches", [])
-
-    # Task 7 — Episode-first retrieval: fetch historically similar episodes as RL priors
-    try:
-        episode_priors = retrieve_similar_episodes(db, query_text=query_text, rack_id=rack_id, k=5)
-    except Exception as ep_exc:
-        logger.warning("Episode retrieval failed: %s", ep_exc)
+    if not use_memory:
+        memories = []
         episode_priors = []
+        step_info = {
+            "agent": "MonitorAgent",
+            "query": query_text,
+            "retrieved_memories_count": 0,
+            "retrieved_episodes_count": 0,
+            "retrieval_method": "disabled",
+        }
+    else:
+        search_res = hybrid_search_incidents(db, query_text=query_text, rack_id=rack_id, k=5)
+        memories = search_res.get("matches", [])
 
-    step_info = {
-        "agent": "MonitorAgent",
-        "query": query_text,
-        "retrieved_memories_count": len(memories),
-        "retrieved_episodes_count": len(episode_priors),
-        "retrieval_method": search_res.get("retrieval_method"),
-    }
+        # Task 7 — Episode-first retrieval: fetch historically similar episodes as RL priors
+        try:
+            episode_priors = retrieve_similar_episodes(db, query_text=query_text, rack_id=rack_id, k=5)
+        except Exception as ep_exc:
+            logger.warning("Episode retrieval failed: %s", ep_exc)
+            episode_priors = []
+
+        step_info = {
+            "agent": "MonitorAgent",
+            "query": query_text,
+            "retrieved_memories_count": len(memories),
+            "retrieved_episodes_count": len(episode_priors),
+            "retrieval_method": search_res.get("retrieval_method"),
+        }
     state["agent_trace"].append(step_info)
     state["retrieved_memories"] = memories
     state["episode_priors"] = episode_priors
@@ -120,13 +138,8 @@ def predictor_node(state: AgentState) -> AgentState:
             "llm_provider": res.get("provider"),
         }
     except Exception as exc:
-        logger.warning("PredictorAgent LLM failed (%s), using rule-based prediction.", exc)
-        predictions = {
-            "risk_level": "HIGH" if twin.get("utilisation_pct", 0) > 85 else "MEDIUM",
-            "primary_risk": "Utilisation threshold exceeded",
-            "predicted_pue_impact": 1.25 if twin.get("utilisation_pct", 0) > 85 else 1.10,
-            "llm_provider": "rules_fallback",
-        }
+        logger.error("PredictorAgent LLM failed (%s), no fallback available - check Ollama/Groq configuration", exc)
+        raise RuntimeError(f"PredictorAgent LLM reasoning failed: {exc}. Please check Ollama and Groq configuration.")
 
     state["predicted_risks"] = predictions
     state["agent_trace"].append({"agent": "PredictorAgent", "predictions": predictions})
@@ -145,50 +158,65 @@ def optimizer_node(state: AgentState) -> AgentState:
     twin = state["twin_dict"]
     water = state["water_out"]
     risks = state["predicted_risks"]
-    episode_priors = state.get("episode_priors", [])
+    use_memory = state.get("use_memory", True)
+    episode_priors = state.get("episode_priors", []) if use_memory else []
 
-    # Task 6: query StrategyScore for prior confidence on candidate strategies
     strategy_prior_note = ""
-    try:
-        from app.models_ext import StrategyScore
-        scores = db.query(StrategyScore).order_by(StrategyScore.confidence.desc()).limit(3).all()
-        if scores:
-            strategy_prior_note = (
-                "Historical strategy scores (action: confidence): "
-                + ", ".join(f"{s.strategy_key}={s.confidence:.2f}" for s in scores)
-            )
-    except Exception as sc_exc:
-        logger.debug("StrategyScore query failed: %s", sc_exc)
-
-    # Task 7: episode prior summary for prompt
     episode_note = ""
-    if episode_priors:
-        ep_strs = [
-            f"'{e['action_taken']}' success={e['success']} water_delta={e['water_delta_pct']}%"
-            for e in episode_priors[:3]
-        ]
-        episode_note = f"\nSimilar past episodes: {'; '.join(ep_strs)}."
-
-    # Operational RAG: HVAC Manuals
     manual_note = ""
-    try:
-        from app.mcp.tools import retrieve_hvac_manual
-        manuals = retrieve_hvac_manual(db, f"How to resolve {risks.get('primary_risk', 'high temps')}?", k=1)
-        if manuals:
-            manual_note = f"\nRelevant HVAC SOP '{manuals[0]['title']}': {manuals[0]['content']}"
-    except Exception as e:
-        logger.debug("Operational RAG skipped: %s", e)
 
-    system_prompt = (
-        "You are the Cooling & Power Optimizer Agent.\n"
-        "Propose TWO candidate strategies and select the best one.\n"
-        "Respond ONLY with a valid JSON object containing:\n"
-        '  "recommendation": string (chosen strategy)\n'
-        '  "confidence": float between 0 and 1\n'
-        '  "expected_water_saving": float\n'
-        '  "rationale": string\n'
-        '  "alternative": string (the other candidate strategy you rejected)\n'
-    )
+    if use_memory:
+        # Task 6: query StrategyScore for prior confidence on candidate strategies
+        try:
+            from app.models_ext import StrategyScore
+            scores = db.query(StrategyScore).order_by(StrategyScore.confidence.desc()).limit(3).all()
+            if scores:
+                strategy_prior_note = (
+                    "Historical strategy scores (action: confidence): "
+                    + ", ".join(f"{s.strategy_key}={s.confidence:.2f}" for s in scores)
+                )
+        except Exception as sc_exc:
+            logger.debug("StrategyScore query failed: %s", sc_exc)
+
+        # Task 7: episode prior summary for prompt
+        if episode_priors:
+            ep_strs = [
+                f"'{e['action_taken']}' success={e['success']} water_delta={e['water_delta_pct']}%"
+                for e in episode_priors[:3]
+            ]
+            episode_note = f"\nSimilar past episodes: {'; '.join(ep_strs)}."
+
+        # Operational RAG: HVAC Manuals
+        try:
+            from app.mcp.tools import retrieve_hvac_manual
+            manuals = retrieve_hvac_manual(db, f"How to resolve {risks.get('primary_risk', 'high temps')}?", k=1)
+            if manuals:
+                manual_note = f"\nRelevant HVAC SOP '{manuals[0]['title']}': {manuals[0]['content']}"
+        except Exception as e:
+            logger.debug("Operational RAG skipped: %s", e)
+
+    if use_memory:
+        system_prompt = (
+            "You are the Cooling & Power Optimizer Agent.\n"
+            "Propose TWO candidate strategies and select the best one.\n"
+            "Respond ONLY with a valid JSON object containing:\n"
+            '  "recommendation": string (chosen strategy)\n'
+            '  "confidence": float between 0 and 1\n'
+            '  "expected_water_saving": float\n'
+            '  "rationale": string\n'
+            '  "alternative": string (the other candidate strategy you rejected)\n'
+        )
+    else:
+        system_prompt = (
+            "You are a generic data-centre cooling advisor with NO access to historical episodes or memory.\n"
+            "Use only the current telemetry and conservative static safety margins.\n"
+            "Respond ONLY with a valid JSON object containing:\n"
+            '  "recommendation": string (generic conservative strategy)\n'
+            '  "confidence": float between 0 and 1 (typically 0.55-0.72 without historical proof)\n'
+            '  "expected_water_saving": float (modest estimate, typically 1-5)\n'
+            '  "rationale": string (must state no historical context was available)\n'
+            '  "alternative": string (another generic fallback you rejected)\n'
+        )
 
     user_prompt = (
         f"Risk Level: {risks.get('risk_level')}, Primary Risk: {risks.get('primary_risk')}.\n"
@@ -211,26 +239,22 @@ def optimizer_node(state: AgentState) -> AgentState:
             "expected_water_saving": float(parsed.get("expected_water_saving", 15.5)),
             "rationale": parsed.get("rationale", "Proactive cooling adjustment prevents thermal throttle."),
         }
-    except Exception:
-        optimization = {
-            "recommendation": "Increase liquid cooling flow by 10% to prevent thermal overhead spike.",
-            "confidence": 0.75,
-            "expected_water_saving": 10.0,
-            "rationale": "Rules fallback: steady cooling increase for safe operation.",
-        }
-        llm_confidence = 0.75
+    except Exception as exc:
+        logger.error("OptimizerAgent LLM failed (%s), no fallback available - check Ollama/Groq configuration", exc)
+        raise RuntimeError(f"OptimizerAgent LLM reasoning failed: {exc}. Please check Ollama and Groq configuration.")
 
-    # Task 6: 60/40 blend with StrategyScore
-    try:
-        from app.models_ext import StrategyScore
-        key = optimization["recommendation"][:80]  # truncate for key
-        score = db.get(StrategyScore, key)
-        if score and (score.success_count + score.failure_count) >= 3:
-            blended = round(0.6 * llm_confidence + 0.4 * score.confidence, 3)
-            optimization["confidence"] = blended
-            optimization["rationale"] += f" [StrategyScore blended: {blended:.2f}]"
-    except Exception as blend_exc:
-        logger.debug("StrategyScore blending skipped: %s", blend_exc)
+    # Task 6: 60/40 blend with StrategyScore (memory-enabled runs only)
+    if use_memory:
+        try:
+            from app.models_ext import StrategyScore
+            key = optimization["recommendation"][:80]  # truncate for key
+            score = db.get(StrategyScore, key)
+            if score and (score.success_count + score.failure_count) >= 3:
+                blended = round(0.6 * optimization["confidence"] + 0.4 * score.confidence, 3)
+                optimization["confidence"] = blended
+                optimization["rationale"] += f" [StrategyScore blended: {blended:.2f}]"
+        except Exception as blend_exc:
+            logger.debug("StrategyScore blending skipped: %s", blend_exc)
 
     # Task 5: log rejected alternative
     alternatives_rejected = [alternative] if alternative else []
@@ -293,9 +317,9 @@ def action_node(state: AgentState) -> AgentState:
             logger.error("Closed-Loop Actuation failed: %s", act_exc)
             actuation_result = {"error": str(act_exc)}
 
-    # Persist agent memory via MCP tool
+    # Persist agent memory via MCP tool (memory-enabled runs only)
     stored_mem = {}
-    if db:
+    if db and state.get("use_memory", True):
         try:
             summary = f"Action: {opt['recommendation']} | Expected Saving: {opt['expected_water_saving']}L/hr | Confidence: {final_conf}"
             stored_mem = store_agent_memory(db, memory_type="recommendation", source_id=run_id, summary=summary)
@@ -325,6 +349,9 @@ def reflect_node(state: AgentState) -> AgentState:
     decision context immediately after action execution. Outcome fields (water_delta_pct,
     temp_delta_c, success, reward) are left NULL and resolved asynchronously by
     outcome_watcher.resolve_pending_episodes() ~15 minutes later."""
+    if not state.get("use_memory", True):
+        return state
+
     run_id = state["run_id"]
     db = state["db"]
     opt = state["optimization_plan"]
@@ -350,12 +377,12 @@ def reflect_node(state: AgentState) -> AgentState:
             recommendation_id=rec_id,
             telemetry_snapshot={
                 k: twin.get(k)
-                for k in ["cpu_pct", "gpu_pct", "gpu_temp", "ram_pct", "utilisation_pct", "thermal_load_kw"]
+                for k in ["cpu_pct", "gpu_pct", "gpu_temp", "ram_pct", "utilisation_pct"]
                 if twin.get(k) is not None
             },
             water_snapshot={
                 k: water.get(k)
-                for k in ["water_l_per_hr", "cooling_load_kw", "wue_factor", "pue"]
+                for k in ["water_l_per_hr", "cooling_load_kw", "wue_factor", "pue", "thermal_load_kw", "utilisation_pct"]
                 if water.get(k) is not None
             },
             action_taken=opt.get("recommendation", "")[:200],
@@ -393,15 +420,19 @@ def explainer_node(state: AgentState) -> AgentState:
         f"Validated by Guardrail Critic ({'PASSED' if act['guardrail_passed'] else 'ADJUSTED'})."
     )
 
+    use_memory = state.get("use_memory", True)
     final_output = {
         "run_id": run_id,
-        "recommendation": explanation_text,
+        "recommendation": opt["recommendation"],
+        "recommendation_full": explanation_text,
         "confidence": act["final_confidence"],
-        "agent_name": "langgraph_multi_agent",
-        "cited_memory_ids": cited_ids,
-        "rationale": f"LangGraph State Machine (Monitor->Predictor->Optimizer->Action->Explainer) | {opt['rationale']}",
+        "agent_name": "langgraph_multi_agent" if use_memory else "baseline_no_memory",
+        "cited_memory_ids": cited_ids if use_memory else [],
+        "cited_episodes_count": len(state.get("episode_priors", [])) if use_memory else 0,
+        "rationale": opt["rationale"] if not use_memory else f"LangGraph State Machine (Monitor->Predictor->Optimizer->Action->Explainer) | {opt['rationale']}",
         "agent_trace": state["agent_trace"],
         "expected_water_saving": opt.get("expected_water_saving", 0.0),
+        "use_memory": use_memory,
     }
 
     state["agent_trace"].append({"agent": "ExplainerAgent", "explanation": explanation_text})
@@ -437,7 +468,15 @@ class LangGraphWorkflowRunner:
         else:
             self.app = None
 
-    def run(self, db: Session, twin_state_obj, water_out: dict, open_incidents: int) -> Dict[str, Any]:
+    def run(
+        self,
+        db: Session,
+        twin_state_obj,
+        water_out: dict,
+        open_incidents: int,
+        *,
+        use_memory: bool = True,
+    ) -> Dict[str, Any]:
         run_id = rl.new_run_id()
         twin_dict = twin_state_obj.model_dump()
 
@@ -447,6 +486,7 @@ class LangGraphWorkflowRunner:
             "twin_dict": twin_dict,
             "water_out": water_out,
             "open_incidents": open_incidents,
+            "use_memory": use_memory,
             "retrieved_memories": [],
             "episode_priors": [],            # Task 7
             "cluster_health": {},

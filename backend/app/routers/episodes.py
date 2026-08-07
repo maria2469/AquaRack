@@ -27,14 +27,20 @@ def get_episodes_replay(
     min_reward: Optional[float] = Query(None, description="Minimum reward threshold"),
     action: Optional[str] = Query(None, description="Filter by action_taken value"),
     limit: int = Query(100, ge=1, le=500, description="Maximum number of episodes to return"),
+    include_unresolved: bool = Query(False, description="Include episodes without outcomes (for dashboard)"),
     db: Session = Depends(get_db),
 ):
     """
-    Return resolved Episode rows (outcome_recorded_at IS NOT NULL) optionally
-    filtered by rack, success flag, minimum reward, or action taken.
+    Return Episode rows optionally filtered by rack, success flag, minimum reward, or action taken.
+    By default only returns resolved episodes (outcome_recorded_at IS NOT NULL).
+    Set include_unresolved=True to get all episodes including unresolved ones.
     Results are ordered by created_at DESC (most recent first).
     """
-    q = db.query(Episode).filter(Episode.outcome_recorded_at.isnot(None))
+    q = db.query(Episode)
+    
+    # Only filter for resolved episodes if not explicitly including unresolved
+    if not include_unresolved:
+        q = q.filter(Episode.outcome_recorded_at.isnot(None))
 
     if rack_id is not None:
         q = q.filter(Episode.rack_id == rack_id)
@@ -46,6 +52,8 @@ def get_episodes_replay(
         q = q.filter(Episode.action_taken == action)
 
     episodes = q.order_by(Episode.created_at.desc()).limit(limit).all()
+    
+    logger.info(f"Returning {len(episodes)} episodes (include_unresolved={include_unresolved})")
 
     return [
         {

@@ -6,6 +6,7 @@ import os
 import logging
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -30,9 +31,17 @@ class Settings(BaseSettings):
     # ==========================================================
     # DATABASE
     # ==========================================================
-    DATABASE_URL: str = (
-        "cockroachdb://root@localhost:26257/aquarack?sslmode=disable"
-    )
+    DATABASE_URL: str = os.getenv("DATABASE_URL")
+    
+    @field_validator('DATABASE_URL')
+    @classmethod
+    def validate_database_url(cls, v):
+        if not v:
+            raise ValueError("DATABASE_URL must be set via environment variable")
+        # Require SSL in production (no sslmode=disable allowed)
+        if "sslmode=disable" in v:
+            raise ValueError("SSL must be enabled for database connections in production")
+        return v
 
     # ==========================================================
     # DIGITAL TWIN
@@ -58,9 +67,9 @@ class Settings(BaseSettings):
     # ==========================================================
     OLLAMA_ENABLED: bool = True
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen2.5")
+    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct")  # Better reasoning model
     OLLAMA_EMBED_MODEL: str = "nomic-embed-text"
-    OLLAMA_TIMEOUT_SECONDS: int = 180
+    OLLAMA_TIMEOUT_SECONDS: int = 120  # 2 minutes for better interactive experience
 
     # ==========================================================
     # GROQ (FALLBACK reasoning agent, used only if Ollama fails)

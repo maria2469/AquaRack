@@ -8,6 +8,7 @@ import math
 import re
 import logging
 from typing import List, Dict, Optional
+from functools import lru_cache
 
 import cohere
 
@@ -20,7 +21,19 @@ LOCAL_MODEL_NAME = f"local-hashed-bow-{TARGET_EMBED_DIM}-v1"
 _token_re = re.compile(r"[a-zA-Z0-9_]+")
 logger = logging.getLogger(__name__)
 
-_embedding_cache: Dict[str, List[float]] = {}
+# Use LRU cache with size limit to prevent unbounded memory growth
+@lru_cache(maxsize=1000)
+def _get_cached_embedding(text: str, input_type: str) -> Optional[List[float]]:
+    """Cached embedding function with LRU eviction policy."""
+    if settings.COHERE_ENABLED and settings.COHERE_API_KEY:
+        try:
+            vec = _cohere_embed(text, input_type)
+            if vec:
+                return vec
+        except Exception as e:
+            logger.warning("Cohere embedding failed: %s", e)
+    return _local_embed(text, LOCAL_EMBED_DIM)
+
 _cohere_client: Optional[cohere.Client] = None
 
 
@@ -72,32 +85,11 @@ def _cohere_embed(text: str, input_type: str = "search_document") -> Optional[Li
 
 
 def embed_text(text: str, input_type: str = "search_document"):
-    """Returns (vector, model_name_used) with guaranteed 1024 dimensions."""
-    cache_key = f"{input_type}:{text}"
-    if cache_key in _embedding_cache:
-        return _embedding_cache[cache_key], settings.COHERE_EMBED_MODEL if (settings.COHERE_ENABLED and settings.COHERE_API_KEY) else LOCAL_MODEL_NAME
-
-    if settings.COHERE_ENABLED and settings.COHERE_API_KEY:
-        try:
-            vector = _cohere_embed(text, input_type=input_type)
-            if vector:
-                _embedding_cache[cache_key] = vector
-                return vector, settings.COHERE_EMBED_MODEL
-            logger.warning("Cohere embedding returned empty result; falling back to local hash embedding.")
-        except Exception as e:
-            logger.error(
-                "Cohere embedding failed (%s); falling back to secondary local embedding (%s).",
-                e, LOCAL_MODEL_NAME,
-            )
-    else:
-        logger.warning(
-            "COHERE_ENABLED is False or COHERE_API_KEY unset -- using secondary "
-            "local embedding (%s).", LOCAL_MODEL_NAME,
-        )
-
-    local_vec = _local_embed(text, dim=TARGET_EMBED_DIM)
-    _embedding_cache[cache_key] = local_vec
-    return local_vec, LOCAL_MODEL_NAME
+    """Returns (vector, model_name_used) with guaranteed 1024 dimensions using LRU cache."""
+    # Use the cached function with LRU eviction
+    vector = _get_cached_embedding(text, input_type)
+    model_name = settings.COHERE_EMBED_MODEL if (settings.COHERE_ENABLED and settings.COHERE_API_KEY) else LOCAL_MODEL_NAME
+    return vector, model_name
 
 
 def cosine_similarity(a: List[float], b: List[float]) -> float:

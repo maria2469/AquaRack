@@ -27,8 +27,18 @@ class Orchestrator:
         from app.agents.langgraph_workflow import langgraph_runner
         self.langgraph_runner = langgraph_runner
 
-    def route_task(self, db: Session, twin_state_obj, water_out: dict, open_incidents: int) -> Dict:
-        return self.langgraph_runner.run(db, twin_state_obj, water_out, open_incidents)
+    def route_task(
+        self,
+        db: Session,
+        twin_state_obj,
+        water_out: dict,
+        open_incidents: int,
+        *,
+        use_memory: bool = True,
+    ) -> Dict:
+        return self.langgraph_runner.run(
+            db, twin_state_obj, water_out, open_incidents, use_memory=use_memory
+        )
 
 
 # Module-level singleton — stateless aside from immutable agent config, safe to share.

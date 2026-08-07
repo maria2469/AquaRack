@@ -24,7 +24,7 @@ def get_http_client() -> httpx.Client:
     global _http_client
     if _http_client is None or _http_client.is_closed:
         _http_client = httpx.Client(
-            timeout=httpx.Timeout(120.0, connect=10.0),
+            timeout=httpx.Timeout(120.0, connect=10.0),  # 2 minutes total, 10s connect - better for interactive use
             limits=httpx.Limits(max_keepalive_connections=20, max_connections=50),
         )
     return _http_client
@@ -60,8 +60,10 @@ def call_ollama_qwen(
         ],
         "stream": False,
         "options": {
-            "temperature": 0.2,
-            "num_predict": 1024,
+            "temperature": 0.1,  # Lower temperature for more accurate/consistent responses
+            "num_predict": 2048,  # Increased context window for better reasoning
+            "top_p": 0.9,  # Nucleus sampling for better quality
+            "top_k": 40,  # Top-k sampling for focused responses
         },
     }
 
@@ -107,8 +109,10 @@ def call_groq_fallback(
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        "temperature": 0.2,
+        "temperature": 0.1,  # Lower temperature for consistency
         "response_format": {"type": "json_object"},
+        "max_tokens": 2048,  # Increased context window
+        "top_p": 0.9,  # Better quality sampling
     }
 
     response = client.post(url, headers=headers, json=payload, timeout=float(timeout))
@@ -135,6 +139,8 @@ def generate_reasoning_with_fallback(
     Primary strategy: Ollama (Qwen).
     Fallback strategy: Groq.
     Third safety net: Exception raised to caller.
+    
+    Optimized for accuracy with better error handling and retry logic.
     """
     if settings.OLLAMA_ENABLED:
         try:

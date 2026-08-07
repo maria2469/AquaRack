@@ -59,6 +59,24 @@ def test_mcp_tools_and_reasoning_loop():
     assert "confidence_pct" in reason_data
     assert "expected_water_saving" in reason_data
 
+    # Test POST /api/reason with use_memory=false (baseline mode)
+    baseline_resp = client.post("/api/reason", json={"use_memory": False})
+    assert baseline_resp.status_code == 200
+    baseline_data = baseline_resp.json()
+    assert baseline_data.get("use_memory") is False
+    assert baseline_data.get("cited_episodes_count") == 0
+
+    # Test POST /api/compare — side-by-side benchmark
+    compare_resp = client.post("/api/compare", json={})
+    assert compare_resp.status_code == 200
+    compare_data = compare_resp.json()
+    assert "scenario" in compare_data
+    assert "without_memory" in compare_data
+    assert "with_memory" in compare_data
+    assert compare_data["without_memory"]["use_memory"] is False
+    assert compare_data["with_memory"]["use_memory"] is True
+    assert compare_data["scenario"]["utilisation"] is not None
+
 
 def test_memory_search_endpoint():
     search_resp = client.post("/api/memory/search", json={"query": "high GPU water savings", "k": 5})

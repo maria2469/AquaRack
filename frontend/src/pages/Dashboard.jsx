@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback, useMemo } from "react";
 
 import { motion } from "framer-motion";
 import {
@@ -11,6 +11,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line
 } from "recharts";
 import { useLiveTelemetry } from "../hooks/useLiveTelemetry";
+import { useReasoningProgress } from "../hooks/useReasoningProgress";
 import { downloadDailyReport, postReason } from "../lib/api";
 
 import StatCard from "../components/ui/StatCard";
@@ -18,11 +19,12 @@ import AmbientVeil from "../components/ui/AmbientVeil";
 import AgentExplanationPanel from "../components/AgentExplanationPanel";
 import AgentReasoningConsole from "../components/AgentReasoningConsole";
 import MCPMemoryChatbot from "../components/MCPMemoryChatbot";
+import ReasoningProgressBar from "../components/ReasoningProgressBar";
 
 function ConnectionBadge({ status }) {
   const map = {
     connecting: { icon: RefreshCw, text: "Connecting…", cls: "text-mist border-rack-2 bg-hall-2" },
-    live: { icon: Wifi, text: "Live — CockroachDB + Ollama Connected", cls: "text-signal border-signal/30 bg-signal/10" },
+    live: { icon: Wifi, text: "Live — Connected", cls: "text-signal border-signal/30 bg-signal/10" },
     mock: { icon: WifiOff, text: "Demo mode — synthetic stream", cls: "text-amber border-amber/30 bg-amber/10" },
     error: { icon: AlertCircle, text: "Backend unreachable — showing demo stream", cls: "text-alert border-alert/30 bg-alert/10" },
   };
@@ -40,70 +42,101 @@ export default function Dashboard() {
   const { data, status, refresh } = useLiveTelemetry({ intervalMs: 5000 });
   const [reasonLoading, setReasonLoading] = useState(false);
   const [reasoningData, setReasoningData] = useState(null);
+  const [reasonError, setReasonError] = useState(null);
   const [isChatbotOpen, setIsChatbotOpen] = useState(false);
+  
+  // Real-time progress tracking for Ollama reasoning
+  const { activeStage, elapsedSec, progressPct } = useReasoningProgress(reasonLoading);
 
   // useLiveTelemetry now fetches /api/dashboard and exposes the full dashboard
   // shape including charts and latest_telemetry — use it directly.
   const dashData = data;
   const telemetry = data?.latest_telemetry;
 
-  const handleReason = async () => {
+  const handleReason = useCallback(async () => {
+    if (status !== "live") {
+      setReasonError("Connect to the backend to run the reasoning loop.");
+      return;
+    }
     setReasonLoading(true);
+    setReasonError(null);
     try {
-      const res = await postReason(telemetry?.telemetry_id);
+      const tid = telemetry?.telemetry_id !== "live" ? telemetry?.telemetry_id : undefined;
+      const res = await postReason(tid);
       setReasoningData(res);
       await refresh();
     } catch (err) {
       console.error("Reasoning call failed", err);
+      const detail = err?.response?.data?.detail;
+      
+      // Better error messages for different failure scenarios
+      let errorMessage = "Reasoning failed — ensure backend and Ollama are running.";
+      
+      if (err?.code === "ECONNABORTED" || err?.message?.includes("timeout")) {
+        errorMessage = "Request timeout — Ollama reasoning took longer than expected. This is normal for local inference. Try again or check if Ollama is running properly.";
+      } else if (err?.response?.status === 404) {
+        errorMessage = "Reasoning endpoint not found — check backend configuration.";
+      } else if (err?.response?.status === 500) {
+        errorMessage = "Backend error — check server logs for details.";
+      } else if (typeof detail === "string") {
+        errorMessage = detail;
+      } else if (err?.message) {
+        errorMessage = `Error: ${err.message}`;
+      }
+      
+      setReasonError(errorMessage);
     } finally {
       setReasonLoading(false);
     }
-  };
+  }, [status, telemetry, refresh]);
 
-  const handleDownload = async (format) => {
+  const handleDownload = useCallback(async (format) => {
     try {
       const blob = await downloadDailyReport(format);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `aquamind_daily_report.${format}`;
+      a.download = `rackpulse_daily_report.${format}`;
       a.click();
       URL.revokeObjectURL(url);
     } catch {
       alert("Could not reach backend report endpoint.");
     }
-  };
+  }, []);
 
-  const gpuChartData = dashData?.charts?.gpu_usage || [
+  // Memoize chart data to prevent unnecessary recalculations
+  const gpuChartData = useMemo(() => dashData?.charts?.gpu_usage || [
     { timestamp: "19:00", gpu_usage: 65, cpu_usage: 40 },
     { timestamp: "19:05", gpu_usage: 78, cpu_usage: 45 },
     { timestamp: "19:10", gpu_usage: 91, cpu_usage: 52 },
     { timestamp: "19:15", gpu_usage: 84, cpu_usage: 48 },
     { timestamp: "19:20", gpu_usage: 88, cpu_usage: 50 },
-  ];
+  ], [dashData?.charts?.gpu_usage]);
 
-  const waterChartData = dashData?.charts?.water_consumption || [
+  const waterChartData = useMemo(() => dashData?.charts?.water_consumption || [
     { timestamp: "19:00", predicted_water: 1.6, saved_water: 0.3 },
     { timestamp: "19:05", predicted_water: 1.8, saved_water: 0.35 },
     { timestamp: "19:10", predicted_water: 2.1, saved_water: 0.42 },
     { timestamp: "19:15", predicted_water: 1.9, saved_water: 0.38 },
     { timestamp: "19:20", predicted_water: 1.7, saved_water: 0.32 },
-  ];
+  ], [dashData?.charts?.water_consumption]);
 
-  const defaultExplanation = {
-    recommendation: dashData?.latest_recommendation?.text || "Deploy Hybrid Evaporative Liquid Cooling across GPU Cluster (Rack 1-100)",
-    explanation: "CockroachDB Managed MCP retrieved 24 similar historical incidents matching 39°C ambient temperature spikes.",
-    root_cause: "Parallel matrix multiplication training workload combined with high humidity ambient air.",
-    expected_water_saving: dashData?.latest_recommendation?.expected_water_saving || 17.8,
-    confidence_pct: dashData?.memory_confidence_pct || 93,
-    matched_memories_count: dashData?.historical_matches_count || 24,
-    historical_evidence: [
-      { memory_id: "Incident #182", summary: "High GPU temperature at 38°C ambient - Hybrid Cooling applied" },
-      { memory_id: "Incident #201", summary: "Peak load water surge - Evaporative strategy reduced 18% water" },
-      { memory_id: "Incident #233", summary: "Multi-rack scaling thermal cluster - Liquid cooling baseline matched" },
-    ],
-    thermodynamic_metrics: { ambient_temp: dashData?.weather_temp || 39, humidity: dashData?.humidity || 62 }
-  };
+  const defaultExplanation = useMemo(() => ({
+    recommendation: dashData?.latest_recommendation?.text
+      ?? "Run the reasoning loop to generate a live recommendation from current telemetry.",
+    explanation: dashData?.historical_matches_count
+      ? `Dashboard shows ${dashData.historical_matches_count} historical vector matches for current conditions.`
+      : "Run the reasoning loop to retrieve similar incidents from CockroachDB.",
+    root_cause: null,
+    expected_water_saving: dashData?.latest_recommendation?.expected_water_saving ?? null,
+    confidence_pct: dashData?.memory_confidence_pct ?? null,
+    matched_memories_count: dashData?.historical_matches_count ?? 0,
+    historical_evidence: [],
+    thermodynamic_metrics: {
+      ambient_temp: dashData?.weather_temp ?? telemetry?.weather_temp,
+      humidity: dashData?.humidity ?? telemetry?.humidity,
+    },
+  }), [dashData, telemetry]);
 
   return (
     <div className="relative bg-abyss min-h-screen">
@@ -114,19 +147,32 @@ export default function Dashboard() {
             <div>
               <span className="text-xs uppercase tracking-[0.18em] text-flow font-mono">Agentic Digital Twin</span>
               <h1 className="font-heading text-3xl md:text-4xl font-semibold text-frost mt-1.5">
-                AquaRack Enterprise Dashboard
+                RackPulse Dashboard
               </h1>
-              <p className="text-sm text-mist mt-1">CockroachDB Managed MCP Server + Ollama Agentic Memory</p>
+              <p className="text-sm text-mist mt-1">Multi-Agent Data Center Optimization Platform</p>
             </div>
             <div className="flex items-center gap-3 flex-wrap">
               <ConnectionBadge status={status} />
               <button
                 onClick={handleReason}
                 disabled={reasonLoading}
-                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-coolant via-flow to-signal hover:brightness-110 disabled:opacity-60 px-4 py-2 text-xs font-semibold text-abyss transition-all shadow-lg"
+                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-coolant via-flow to-signal hover:brightness-110 disabled:opacity-60 disabled:cursor-not-allowed px-4 py-2 text-xs font-semibold text-abyss transition-all shadow-lg"
               >
-                {reasonLoading ? <RefreshCw size={13} className="animate-spin" /> : <BrainCircuit size={13} />}
-                Run Ollama Reasoning Loop
+                {reasonLoading ? (
+                  <>
+                    <RefreshCw size={13} className="animate-spin" />
+                    <span className="animate-pulse">
+                      {activeStage?.label 
+                        ? `${activeStage.label}...` 
+                        : "Starting Ollama..."}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <BrainCircuit size={13} />
+                    Run Ollama Reasoning Loop
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -134,6 +180,13 @@ export default function Dashboard() {
       </section>
 
       <section className="max-w-7xl mx-auto px-5 md:px-8 py-8 space-y-8">
+        {reasonError && (
+          <div className="rounded-xl border border-alert/30 bg-alert/10 px-4 py-2.5 text-xs font-mono text-alert flex items-center gap-2">
+            <AlertCircle size={14} />
+            {reasonError}
+          </div>
+        )}
+
         {/* KPI CARDS GRID */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard icon={Zap} label="Current GPU Usage" value={telemetry?.gpu_pct ?? dashData?.current_gpu ?? 91} unit="%" accent="coolant" />
@@ -143,16 +196,18 @@ export default function Dashboard() {
           <StatCard icon={Gauge} label="Water Saved Today" value={dashData?.water_saved_today_liters ?? 184.5} unit="Liters" accent="signal" />
           <StatCard icon={ShieldCheck} label="Memory Confidence" value={`${dashData?.memory_confidence_pct ?? 93}%`} unit="Match Score" accent="coolant" />
           <StatCard icon={Database} label="Historical Matches" value={dashData?.historical_matches_count ?? 24} unit="Memories" accent="flow" />
-          <StatCard icon={Server} label="OpenDC Fleet (Racks 1-100)" value={dashData?.opendc_fleet?.rack_count ?? 100} unit="Active Racks" accent="amber" />
+          <StatCard icon={Server} label="OpenDC Fleet" value={dashData?.opendc_fleet?.rack_count ?? 100} unit="Active Racks" accent="amber" />
         </div>
 
-        {/* SIDE-BY-SIDE REASONING LOOP CONTROL & LIVE CONSOLE LOGS */}
+        {/* REASONING LOOP CONTROL & LIVE CONSOLE LOGS */}
         <div className="grid lg:grid-cols-2 gap-6 items-stretch">
-          {/* LEFT: AGENT REASONING EXPLANATION & TRIGGER */}
+          {/* AGENT REASONING EXPLANATION */}
           <AgentExplanationPanel
-            reasoningData={reasoningData || defaultExplanation}
-            onRunReasoning={handleReason}
+            reasoningData={reasoningData}
+            idlePreview={defaultExplanation}
             isReasoning={reasonLoading}
+            telemetry={telemetry}
+            dashData={dashData}
           />
 
           {/* RIGHT: AGENT REASONING CONSOLE (LIVE SSE LOG STREAM) */}

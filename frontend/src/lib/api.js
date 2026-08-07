@@ -17,7 +17,7 @@ export const api = axios.create({
 // Dedicated instance for slow agentic endpoints (multi-agent pipeline via Ollama/Groq)
 export const reasonApi = axios.create({
   baseURL,
-  timeout: 120000,
+  timeout: 300000, // 5 minutes timeout for Ollama reasoning
 });
 
 // Optional local bearer token support
@@ -59,6 +59,14 @@ export const getLatestRecommendation = () =>
 export const searchMemory = (q, k = 5) =>
   api.get("/api/v1/memory/search", { params: { q, k } }).then((r) => r.data);
 
+/** GET /api/memory/history?limit= -> Memory history */
+export const getMemoryHistory = (limit = 50) =>
+  api.get("/api/memory/history", { params: { limit } }).then((r) => r.data);
+
+/** GET /api/memory/comprehensive -> Comprehensive memory and episode stats */
+export const getComprehensiveStats = () =>
+  api.get("/api/memory/comprehensive").then((r) => r.data);
+
 /** GET /api/v1/reports/daily?format=csv|pdf -> Blob (file stream) */
 export const downloadDailyReport = (format = "csv") =>
   api
@@ -70,9 +78,9 @@ export const getEnterpriseDashboard = () =>
   api.get("/api/dashboard").then((r) => r.data);
 
 /** POST /api/reason — runs the full multi-agent pipeline via Ollama/Groq with fallback to /api/v1/recommend. */
-export const postReason = (telemetry_id) =>
+export const postReason = (telemetry_id, use_memory = true) =>
   reasonApi
-    .post("/api/reason", { telemetry_id })
+    .post("/api/reason", { telemetry_id, use_memory })
     .catch((err) => {
       if (err.response && err.response.status === 404) {
         return reasonApi.post("/api/v1/recommend", { telemetry_id });
@@ -80,6 +88,154 @@ export const postReason = (telemetry_id) =>
       throw err;
     })
     .then((r) => r.data);
+
+/** POST /api/compare — side-by-side memory vs no-memory benchmark (single blocking call) */
+export const postCompare = (telemetry_id) =>
+  reasonApi.post("/api/compare", { telemetry_id }).then((r) => r.data);
+
+function formatCompareSide(reasonRes, useMemory) {
+  return {
+    run_id: reasonRes.run_id,
+    use_memory: useMemory,
+    agent: reasonRes.agent_name || (useMemory ? "langgraph_multi_agent" : "baseline_no_memory"),
+    recommendation: reasonRes.recommendation,
+    rationale: reasonRes.rationale,
+    explanation: reasonRes.explanation,
+    confidence: reasonRes.confidence,
+    confidence_pct: reasonRes.confidence_pct ?? Math.round((reasonRes.confidence ?? 0) * 100),
+    expected_water_saving: reasonRes.expected_water_saving,
+    cited_episodes: useMemory ? (reasonRes.cited_episodes_count ?? 0) : 0,
+    cited_memory_ids: useMemory ? (reasonRes.historical_evidence?.map((h) => h.memory_id) ?? []) : [],
+    matched_memories_count: useMemory ? (reasonRes.matched_memories_count ?? 0) : 0,
+    historical_evidence: useMemory ? (reasonRes.historical_evidence ?? []) : [],
+  };
+}
+
+function buildFailureMemory(failedEpisodes) {
+  const failedEp =
+    failedEpisodes?.find((e) => e.incident_occurred) ?? failedEpisodes?.[0];
+  if (!failedEp?.action_taken) return null;
+  const dateStr = failedEp.created_at?.split("T")[0] ?? "a prior run";
+  if (failedEp.incident_occurred) {
+    return `Avoided strategy '${failedEp.action_taken}' which caused an incident on ${dateStr}.`;
+  }
+  const rewardStr = failedEp.reward != null ? failedEp.reward.toFixed(2) : "n/a";
+  return `Avoided strategy '${failedEp.action_taken}' (reward ${rewardStr}) from ${dateStr}.`;
+}
+
+/** Map POST /api/v1/simulate response + optional live dashboard context to scenario card shape. */
+export function buildScenarioFromSimulate(simulateRes, liveContext = {}) {
+  if (!simulateRes) {
+    return {
+      telemetry_id: liveContext.telemetry_id,
+      rack: liveContext.rack ?? "Primary Rack — Live Telemetry",
+      utilisation: liveContext.utilisation ?? liveContext.gpu_pct ?? null,
+      thermal_load_kw: liveContext.thermal_load_kw ?? null,
+      ambient_temp: liveContext.ambient_temp ?? null,
+      humidity: liveContext.humidity ?? null,
+      cpu_pct: liveContext.cpu_pct ?? null,
+      gpu_pct: liveContext.gpu_pct ?? null,
+    };
+  }
+
+  const rackLabel =
+    simulateRes.rack ??
+    (simulateRes.device_id
+      ? `${simulateRes.device_id} — Active Cluster`
+      : simulateRes.rack_id
+        ? `${simulateRes.rack_id} — Active Cluster`
+        : liveContext.rack ?? "Primary Rack — Active Cluster");
+
+  return {
+    telemetry_id: simulateRes.telemetry_id ?? liveContext.telemetry_id,
+    rack_id: simulateRes.rack_id,
+    device_id: simulateRes.device_id,
+    rack: rackLabel,
+    utilisation: simulateRes.utilisation ?? liveContext.utilisation ?? liveContext.gpu_pct,
+    thermal_load_kw: simulateRes.thermal_load_kw,
+    ambient_temp:
+      simulateRes.ambient_temp ??
+      simulateRes.water_model?.ambient_temp ??
+      liveContext.ambient_temp,
+    humidity:
+      simulateRes.humidity ??
+      simulateRes.water_model?.humidity ??
+      liveContext.humidity,
+    cpu_pct: simulateRes.cpu_pct ?? liveContext.cpu_pct,
+    gpu_pct: simulateRes.gpu_pct ?? liveContext.gpu_pct ?? simulateRes.utilisation,
+  };
+}
+
+/**
+ * Progressive compare benchmark — two sequential LangGraph runs so the UI can
+ * show baseline results before the slower memory-enriched run completes.
+ *
+ * onProgress({ phase, message }) fires at each stage for UX updates.
+ */
+export async function runCompareBenchmark(telemetry_id, onProgress, liveContext = {}) {
+  onProgress?.({ phase: "scenario", message: "Loading live telemetry snapshot from DB…" });
+  const simulateRes = await postSimulate(telemetry_id);
+
+  onProgress?.({
+    phase: "baseline",
+    message: "Running baseline LangGraph pipeline (use_memory=false)…",
+  });
+  const baselineReason = await postReason(telemetry_id, false);
+  const without_memory = {
+    ...formatCompareSide(baselineReason, false),
+    risk_assessment:
+      "Uncertain thermal impact without historical calibration; generic static margins only.",
+  };
+
+  // Emit partial result so UI can render baseline panel before memory run finishes
+  onProgress?.({
+    phase: "baseline_done",
+    message: "Baseline complete — starting memory-enriched run…",
+    partial: { without_memory, simulateRes },
+  });
+
+  onProgress?.({
+    phase: "memory",
+    message: "Running full agentic pipeline with episode RAG (use_memory=true)…",
+  });
+  const [memoryReason, successEpisodes, failedEpisodes] = await Promise.all([
+    postReason(telemetry_id, true),
+    getEpisodesReplay({ success: true, limit: 100 }),
+    getEpisodesReplay({ success: false, limit: 10 }),
+  ]);
+
+  const with_memory = {
+    ...formatCompareSide(memoryReason, true),
+    cited_episodes: successEpisodes?.length ?? memoryReason.cited_episodes_count ?? 0,
+    failure_memory_avoided: buildFailureMemory(failedEpisodes),
+    historical_evidence: (successEpisodes ?? []).slice(0, 5).map((ep) => ({
+      episode_id: ep.episode_id,
+      action_taken: ep.action_taken,
+      reward: ep.reward,
+      water_delta_pct: ep.water_delta_pct,
+      success: ep.success,
+    })),
+    explanation:
+      memoryReason.explanation ??
+      `Grounded in ${successEpisodes?.length ?? 0} resolved success episodes.`,
+  };
+
+  const rackLabel =
+    liveContext.device_id ?? liveContext.rack_id ?? "Primary Rack";
+
+  return {
+    scenario: buildScenarioFromSimulate(simulateRes, {
+      ...liveContext,
+      rack: liveContext.rack ?? `${rackLabel} — Active Cluster`,
+    }),
+    without_memory,
+    with_memory,
+    episodes: {
+      success_count: successEpisodes?.length ?? 0,
+      failure_count: failedEpisodes?.length ?? 0,
+    },
+  };
+}
 
 export const postMemorySearch = (query, k = 5, memory_type = null) =>
   reasonApi.post("/api/memory/search", { query, k, memory_type }).then((r) => r.data);
@@ -93,8 +249,15 @@ export const getRecommendations = (limit = 20) =>
 // ─── New Memory Architecture APIs (Tasks 4-7) ───────────────────────
 
 /** GET /api/v1/episodes/replay -> Episode[] — resolved episodes for experience replay */
-export const getEpisodesReplay = (params = {}) =>
-  api.get("/api/v1/episodes/replay", { params }).then((r) => r.data);
+export const getEpisodesReplay = (params = {}) => {
+  // Add include_unresolved parameter if needed for dashboard
+  const finalParams = { ...params };
+  if (params.includeUnresolved !== undefined) {
+    finalParams.include_unresolved = params.includeUnresolved;
+    delete finalParams.includeUnresolved;
+  }
+  return api.get("/api/v1/episodes/replay", { params: finalParams }).then((r) => r.data);
+};
 
 /** GET /api/v1/fleet/summary -> fleet-wide rack stats */
 export const getFleetSummary = () =>

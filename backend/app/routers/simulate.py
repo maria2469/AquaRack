@@ -95,11 +95,23 @@ def run_full_pipeline(db: Session, telemetry_id: str = None) -> dict:
 @router.post("/simulate")
 def simulate(body: schemas.RecommendationRequest, db: Session = Depends(get_db)):
     result = run_full_pipeline(db, body.telemetry_id)
+    reading = result["reading"]
+    twin = result["twin_state"]
+    water = result["water_out"]
+    rack_label = reading.rack_id or reading.device_id or "Primary Rack"
     return {
-        "utilisation": result["twin_state"].utilisation_pct,
-        "thermal_load_kw": result["twin_state"].thermal_load_kw,
-        "power_draw_kw": result["twin_state"].power_draw_kw,
-        "water_model": result["water_out"],
+        "telemetry_id": reading.telemetry_id,
+        "rack_id": reading.rack_id,
+        "device_id": reading.device_id,
+        "rack": f"{rack_label} — Active Cluster",
+        "utilisation": twin.utilisation_pct,
+        "thermal_load_kw": twin.thermal_load_kw,
+        "power_draw_kw": twin.power_draw_kw,
+        "cpu_pct": reading.cpu_pct,
+        "gpu_pct": reading.gpu_pct,
+        "ambient_temp": water.get("ambient_temp") if reading.weather_temp is None else reading.weather_temp,
+        "humidity": water.get("humidity") if reading.humidity is None else reading.humidity,
+        "water_model": water,
     }
 
 

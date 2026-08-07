@@ -37,6 +37,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from contextlib import asynccontextmanager
+import uvicorn
 
 from app.config import settings
 from app.database import init_db
@@ -58,6 +60,7 @@ from app.routers import (
     agent_trace,
     enterprise_api,
     actuation,
+    scenarios,
 )
 from app.mcp import server as mcp_server
 from app.collector.run_collector import run as run_collector
@@ -69,6 +72,42 @@ logging.basicConfig(
 )
 logger = logging.getLogger("aquamind")
 
+# Module-level handle to the collector thread. Kept as a reference mainly
+# for introspection/debugging (e.g. checking .is_alive() from a shell);
+# not required for shutdown since the thread is a daemon thread.
+_collector_thread: threading.Thread | None = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    init_db()
+    run_migrations()
+    from app.database import IS_COCKROACHDB
+    logger.info(
+        "AquaRack started. DB=%s (CockroachDB=%s) Ollama enabled=%s (model=%s)",
+        settings.DATABASE_URL, IS_COCKROACHDB, settings.OLLAMA_ENABLED, settings.OLLAMA_MODEL,
+    )
+
+    # Start the telemetry collector daemon in-process as a background
+    # thread, so a single uvicorn process produces real, continuously
+    # updating telemetry + weather data without a second terminal/process.
+    # daemon=True means this thread never blocks process exit.
+    global _collector_thread
+    _collector_thread = threading.Thread(
+        target=run_collector,
+        name="telemetry-collector",
+        daemon=True,
+    )
+    _collector_thread.start()
+    logger.info("Telemetry collector started as background thread (in-process, no separate daemon needed).")
+    
+    yield
+    
+    # Shutdown
+    logger.info("AquaRack shutting down...")
+
+
 app = FastAPI(
     title="AquaRack",
     version="2.0.0",
@@ -79,6 +118,7 @@ app = FastAPI(
         "Vector Indexing, and Ollama (Llama 3.1 / Qwen2.5)."
     ),
     redirect_slashes=True,
+    lifespan=lifespan,
 )
 
 # FIX: regex covers any Vercel preview/branch deployment for this project
@@ -134,36 +174,6 @@ async def rfc7807_handler(request: Request, exc: StarletteHTTPException):
     )
 
 
-# Module-level handle to the collector thread. Kept as a reference mainly
-# for introspection/debugging (e.g. checking .is_alive() from a shell);
-# not required for shutdown since the thread is a daemon thread.
-_collector_thread: threading.Thread | None = None
-
-
-@app.on_event("startup")
-def on_startup():
-    init_db()
-    run_migrations()
-    from app.database import IS_COCKROACHDB
-    logger.info(
-        "AquaRack started. DB=%s (CockroachDB=%s) Ollama enabled=%s (model=%s)",
-        settings.DATABASE_URL, IS_COCKROACHDB, settings.OLLAMA_ENABLED, settings.OLLAMA_MODEL,
-    )
-
-    # Start the telemetry collector daemon in-process as a background
-    # thread, so a single uvicorn process produces real, continuously
-    # updating telemetry + weather data without a second terminal/process.
-    # daemon=True means this thread never blocks process exit.
-    global _collector_thread
-    _collector_thread = threading.Thread(
-        target=run_collector,
-        name="telemetry-collector",
-        daemon=True,
-    )
-    _collector_thread.start()
-    logger.info("Telemetry collector started as background thread (in-process, no separate daemon needed).")
-
-
 # Enterprise and MCP routers
 app.include_router(enterprise_api.router)
 app.include_router(mcp_server.router)
@@ -187,6 +197,7 @@ app.include_router(reports.router)
 app.include_router(agent_trace.router)
 app.include_router(episodes.router)
 app.include_router(actuation.router)
+app.include_router(scenarios.router)
 
 
 # --- Serve the dashboard (no Node/build step required) ---
@@ -197,3 +208,14 @@ if os.path.isdir(DASHBOARD_DIR):
     @app.get("/")
     def serve_dashboard():
         return FileResponse(os.path.join(DASHBOARD_DIR, "index.html"))
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        timeout_keep_alive=300,  # 5 minutes
+    )

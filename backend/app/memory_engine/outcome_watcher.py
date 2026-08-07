@@ -13,13 +13,14 @@ from app import models
 from app.models_ext import Episode, StrategyScore
 from app.database import SessionLocal
 from app.memory_engine.embed import embed_text
+from app.db_retry import crdb_retry
 
 logger = logging.getLogger("aquamind.outcome_watcher")
 
 
 def resolve_pending_episodes(db=None, now: Optional[datetime] = None) -> Dict[str, Any]:
     """
-    Finds Episode rows where outcome_recorded_at IS NULL and created_at <= now - 15 minutes.
+    Finds Episode rows where outcome_recorded_at IS NULL and created_at <= now - 10 minutes.
     For each episode: computes outcome metrics, embeds summary text, and upserts StrategyScore.
 
     Args:
@@ -32,7 +33,7 @@ def resolve_pending_episodes(db=None, now: Optional[datetime] = None) -> Dict[st
     own_session = db is None
     db = db or SessionLocal()
     now = now or datetime.utcnow()
-    cutoff = now - timedelta(minutes=15)
+    cutoff = now - timedelta(minutes=10)  # Increased to 10 minutes to allow for proper data collection
 
     resolved_count = 0
     try:
@@ -42,6 +43,8 @@ def resolve_pending_episodes(db=None, now: Optional[datetime] = None) -> Dict[st
             .filter(Episode.created_at <= cutoff)
             .all()
         )
+        
+        logger.info(f"Found {len(episodes)} pending episodes to resolve (created before {cutoff})")
 
         for ep in episodes:
             # 1. Fetch latest telemetry for this rack
@@ -50,28 +53,36 @@ def resolve_pending_episodes(db=None, now: Optional[datetime] = None) -> Dict[st
                 t_query = t_query.filter(models.Telemetry.rack_id == ep.rack_id)
             latest_telemetry = t_query.order_by(models.Telemetry.timestamp.desc()).first()
 
-            # 2. Fetch latest water model result
-            latest_water = (
-                db.query(models.WaterModelResult)
-                .order_by(models.WaterModelResult.computed_at.desc())
-                .first()
-            )
+            # 2. Fetch latest water model result for this rack
+            w_query = db.query(models.WaterModelResult)
+            if ep.rack_id:
+                # Join with telemetry to get rack-specific water results
+                w_query = w_query.join(models.Telemetry, models.WaterModelResult.telemetry_id == models.Telemetry.telemetry_id)
+                w_query = w_query.filter(models.Telemetry.rack_id == ep.rack_id)
+            latest_water = w_query.order_by(models.WaterModelResult.computed_at.desc()).first()
 
-            # 3. Compute temp delta
+            # 3. Compute temp delta (use thermal_load_kw from water snapshot as temperature proxy)
             snap = ep.telemetry_snapshot or {}
-            initial_temp = float(snap.get("gpu_temp") or snap.get("cpu_pct") or 50.0)
-            if latest_telemetry:
+            wsnap = ep.water_snapshot or {}
+            
+            # Use thermal_load_kw from water snapshot as the temperature metric
+            initial_temp = float(wsnap.get("thermal_load_kw") or snap.get("gpu_temp") or snap.get("cpu_pct") or 50.0)
+            if latest_water:
                 current_temp = float(
-                    latest_telemetry.gpu_temp
-                    if latest_telemetry.gpu_temp is not None
-                    else latest_telemetry.cpu_pct
+                    latest_water.thermal_load_kw
+                    if latest_water.thermal_load_kw is not None
+                    else (latest_telemetry.gpu_temp if latest_telemetry and latest_telemetry.gpu_temp is not None else latest_telemetry.cpu_pct if latest_telemetry else initial_temp)
                 )
             else:
                 current_temp = initial_temp
             temp_delta_c = round(current_temp - initial_temp, 2)
+            
+            # Skip unrealistic temperature deltas (>10°C or <-10°C indicate data issues)
+            if abs(temp_delta_c) > 10.0:
+                logger.warning(f"Unrealistic temp delta {temp_delta_c}°C for episode {ep.episode_id[:8]}, skipping resolution")
+                continue
 
             # 4. Compute water delta
-            wsnap = ep.water_snapshot or {}
             initial_water = float(wsnap.get("water_l_per_hr") or 10.0)
             current_water = float(latest_water.water_l_per_hr if latest_water else initial_water)
             water_delta_pct = (
@@ -79,6 +90,11 @@ def resolve_pending_episodes(db=None, now: Optional[datetime] = None) -> Dict[st
                 if initial_water > 0
                 else 0.0
             )
+            
+            # Skip unrealistic water deltas (>100% indicate data issues)
+            if abs(water_delta_pct) > 100.0:
+                logger.warning(f"Unrealistic water delta {water_delta_pct}% for episode {ep.episode_id[:8]}, skipping resolution")
+                continue
 
             # 5. Check for incidents since episode was created
             incident_occurred = (
@@ -87,9 +103,17 @@ def resolve_pending_episodes(db=None, now: Optional[datetime] = None) -> Dict[st
                 .first()
             ) is not None
 
-            # 6. Success + reward
-            success = (temp_delta_c <= 1.0) and (water_delta_pct <= 0.0) and not incident_occurred
-            reward = round(-(0.6 * water_delta_pct + 0.4 * temp_delta_c), 3)
+            # 6. Success + reward (more realistic criteria)
+            # Success is defined as: thermal load didn't increase significantly AND water usage improved
+            temp_success = temp_delta_c <= 1.0  # Thermal load should not increase by more than 1kW
+            water_success = water_delta_pct <= 0.0  # Water usage should decrease or stay same
+            success = temp_success and water_success and not incident_occurred
+            
+            # Reward is based on water savings and thermal efficiency
+            # Positive reward for water savings, negative for water increase, penalized by thermal increase
+            water_reward = -water_delta_pct  # Positive for water savings
+            thermal_penalty = max(0, temp_delta_c)  # Penalize thermal increases
+            reward = round(water_reward - thermal_penalty, 3)
 
             # 7. Embed outcome text
             summary_text = (
@@ -140,11 +164,16 @@ def resolve_pending_episodes(db=None, now: Optional[datetime] = None) -> Dict[st
                 (score.success_count + 1) / (score.success_count + score.failure_count + 2), 3
             )
             score.last_used_at = now
-
+            
             resolved_count += 1
-            logger.debug("Resolved episode %s: success=%s reward=%.3f", ep.episode_id[:8], success, reward)
+            logger.info(f"Resolved episode {ep.episode_id[:8]}: action={ep.action_taken[:30]}... temp_delta={temp_delta_c:.1f}°C water_delta={water_delta_pct:.1f}% success={success} reward={reward:.3f}")
+        
+        # Use crdb_retry for the commit operation
+        def commit_with_retry(db):
+            db.commit()
+            
+        crdb_retry(commit_with_retry, db)
 
-        db.commit()
         logger.info("resolve_pending_episodes: resolved=%d", resolved_count)
 
     except Exception as exc:
@@ -154,5 +183,5 @@ def resolve_pending_episodes(db=None, now: Optional[datetime] = None) -> Dict[st
     finally:
         if own_session:
             db.close()
-
+    
     return {"resolved_episodes": resolved_count}

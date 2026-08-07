@@ -2,13 +2,13 @@ import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Database, Brain, CheckCircle2, XCircle, BarChart3, TrendingUp,
-  RefreshCw, Search, Trophy, AlertTriangle, Droplets, Zap, Clock
+  RefreshCw, Trophy, AlertTriangle, Droplets, Zap, Clock
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line, CartesianGrid
 } from "recharts";
-import { getEpisodesReplay, searchMemory } from "../lib/api";
+import { getEpisodesReplay, getMemoryHistory, getComprehensiveStats } from "../lib/api";
 import AmbientVeil from "../components/ui/AmbientVeil";
 import StatCard from "../components/ui/StatCard";
 
@@ -93,60 +93,68 @@ function EpisodeCard({ ep }) {
 
 export default function MemoryDashboard() {
   const [episodes, setEpisodes] = useState([]);
+  const [memories, setMemories] = useState([]);
+  const [comprehensiveStats, setComprehensiveStats] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState(null);
-  const [searchLoading, setSearchLoading] = useState(false);
 
-  const fetchEpisodes = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getEpisodesReplay({ limit: 200 });
-      setEpisodes(data);
-    } catch {
-      // Generate demo data when backend is unreachable
-      const demoEps = Array.from({ length: 25 }, (_, i) => ({
-        episode_id: `demo-ep-${i}`,
-        run_id: `run-${i}`,
-        rack_id: `rack-0${(i % 4) + 1}`,
-        action_taken: ["Increase cooling flow 12%", "Reduce fan speed 8%", "Shift batch jobs off-peak", "Enable evaporative bypass"][i % 4],
-        confidence_at_decision: 0.6 + Math.random() * 0.35,
-        water_delta_pct: -15 + Math.random() * 30,
-        temp_delta_c: -2 + Math.random() * 4,
-        incident_occurred: Math.random() > 0.85,
-        success: Math.random() > 0.3,
-        reward: -2 + Math.random() * 6,
-        outcome_recorded_at: new Date(Date.now() - i * 3600000).toISOString(),
-        created_at: new Date(Date.now() - i * 3600000 - 900000).toISOString(),
-      }));
-      setEpisodes(demoEps);
+      // Fetch comprehensive stats, episodes, and memory history
+      const [comprehensiveStats, episodesData, memoriesData] = await Promise.all([
+        getComprehensiveStats(),
+        getEpisodesReplay({ limit: 200, includeUnresolved: true }),
+        getMemoryHistory(100)
+      ]);
+      console.log('=== MEMORY DASHBOARD DEBUG ===');
+      console.log('Comprehensive Stats:', comprehensiveStats);
+      console.log('API Response - Episodes:', episodesData);
+      console.log('API Response - Memories:', memoriesData);
+      console.log('Episodes length:', episodesData?.length, 'Memories length:', memoriesData?.length);
+      console.log('============================');
+      
+      // Set comprehensive stats if available
+      if (comprehensiveStats) {
+        setComprehensiveStats(comprehensiveStats);
+        setMemories(memoriesData || []);
+        // Use episodes replay data if available, otherwise fallback to comprehensive stats
+        setEpisodes(episodesData?.length > 0 ? episodesData : []);
+      } else {
+        setMemories(memoriesData || []);
+        setEpisodes(episodesData || []);
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      // Set empty arrays on error - don't use demo data
+      setEpisodes([]);
+      setMemories([]);
+      setComprehensiveStats(null);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { fetchEpisodes(); }, [fetchEpisodes]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) return;
-    setSearchLoading(true);
-    try {
-      const results = await searchMemory(searchQuery, 5);
-      setSearchResults(results);
-    } catch {
-      setSearchResults([{ memory_id: "demo-1", type: "recommendation", summary_text: "Demo: Increase cooling flow by 12%", tier: "hot", similarity: 0.92, created_at: new Date().toISOString() }]);
-    } finally {
-      setSearchLoading(false);
-    }
-  };
+  // Derived stats - use comprehensive stats if available, otherwise calculate from raw data
+  const totalEpisodes = comprehensiveStats?.episode_stats?.total_episodes || episodes.length;
+  const resolvedEpisodes = comprehensiveStats?.episode_stats?.resolved_episodes || episodes.filter(e => e.outcome_recorded_at).length;
+  const unresolvedEpisodes = comprehensiveStats?.episode_stats?.unresolved_episodes || (totalEpisodes - resolvedEpisodes);
+  const successEpisodes = comprehensiveStats?.episode_stats?.successful_episodes || episodes.filter(e => e.success === true).length;
+  const failedEpisodes = comprehensiveStats?.episode_stats?.failed_episodes || episodes.filter(e => e.success === false).length;
+  const avgReward = comprehensiveStats?.episode_stats?.avg_reward || (totalEpisodes > 0 ? (episodes.reduce((s, e) => s + (e.reward || 0), 0) / totalEpisodes).toFixed(2) : "0.00");
+  
+  // Memory stats - use comprehensive stats if available, otherwise calculate from raw data
+  const totalMemories = comprehensiveStats?.memory_stats?.total_memories || memories.length;
+  const recommendationMemories = comprehensiveStats?.memory_stats?.recommendation_memories || memories.filter(m => m.memory_type === "recommendation").length;
+  const incidentMemories = comprehensiveStats?.memory_stats?.incident_memories || memories.filter(m => m.memory_type === "incident").length;
+  const hotMemories = comprehensiveStats?.memory_stats?.hot_memories || memories.filter(m => {
+    const createdTime = new Date(m.created_at).getTime();
+    const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    return createdTime > oneDayAgo;
+  }).length;
 
-  // Derived stats
-  const totalEpisodes = episodes.length;
-  const successEpisodes = episodes.filter(e => e.success).length;
-  const failedEpisodes = totalEpisodes - successEpisodes;
-  const avgReward = totalEpisodes > 0 ? (episodes.reduce((s, e) => s + (e.reward || 0), 0) / totalEpisodes).toFixed(2) : "0.00";
-
-  // Strategy scores derived from episodes
+  // Strategy scores derived from episodes - use raw episode data for detailed analysis
   const strategyMap = {};
   episodes.forEach(ep => {
     const key = ep.action_taken || "unknown";
@@ -202,12 +210,12 @@ export default function MemoryDashboard() {
               <p className="text-sm text-mist mt-1">Episode history, strategy scoring, and memory retrieval analytics</p>
             </div>
             <button
-              onClick={fetchEpisodes}
+              onClick={fetchData}
               disabled={loading}
               className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-coolant via-flow to-signal hover:brightness-110 disabled:opacity-60 px-4 py-2 text-xs font-semibold text-abyss transition-all shadow-lg"
             >
               <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-              Refresh Episodes
+              Refresh Data
             </button>
           </div>
         </div>
@@ -216,10 +224,18 @@ export default function MemoryDashboard() {
       <section className="max-w-7xl mx-auto px-5 md:px-8 py-8 space-y-8">
         {/* KPI Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard icon={Database} label="Total Episodes" value={totalEpisodes} unit="resolved" accent="coolant" />
-          <StatCard icon={CheckCircle2} label="Successful" value={successEpisodes} unit={`${totalEpisodes > 0 ? Math.round(successEpisodes / totalEpisodes * 100) : 0}% rate`} accent="signal" />
-          <StatCard icon={XCircle} label="Failed" value={failedEpisodes} unit="episodes" accent="alert" />
-          <StatCard icon={TrendingUp} label="Avg Reward" value={avgReward} unit="score" accent="flow" />
+          <StatCard icon={Database} label="Total Memories" value={totalMemories} unit="stored" accent="coolant" />
+          <StatCard icon={Brain} label="Recommendations" value={recommendationMemories} unit="strategies" accent="signal" />
+          <StatCard icon={AlertTriangle} label="Incidents" value={incidentMemories} unit="learned" accent="alert" />
+          <StatCard icon={Zap} label="Hot Memory" value={hotMemories} unit="active" accent="flow" />
+        </div>
+
+        {/* Episode Stats */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard icon={Database} label="Total Episodes" value={totalEpisodes} unit="created" accent="coolant" />
+          <StatCard icon={Clock} label="Unresolved" value={unresolvedEpisodes} unit="pending" accent="flow" />
+          <StatCard icon={CheckCircle2} label="Successful" value={successEpisodes} unit="confirmed" accent="signal" />
+          <StatCard icon={XCircle} label="Failed" value={failedEpisodes} unit="confirmed" accent="alert" />
         </div>
 
         {/* Strategy Confidence + Pie Chart */}
@@ -318,43 +334,42 @@ export default function MemoryDashboard() {
           </div>
         </div>
 
-        {/* Memory Search */}
+        {/* Recent Memory History */}
         <div className="card-glass rounded-2xl p-6">
           <div className="flex items-center gap-2 mb-4">
-            <Search size={16} className="text-coolant-2" />
-            <h2 className="font-heading font-semibold text-frost">Vector Memory Search</h2>
+            <Brain size={16} className="text-coolant-2" />
+            <h2 className="font-heading font-semibold text-frost">Recent Memory History</h2>
+            <span className="text-[10px] font-mono text-mist ml-auto">{totalMemories} total</span>
           </div>
-          <div className="flex gap-3 mb-4">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              placeholder="Search memory embeddings… e.g. 'high GPU thermal load cooling strategy'"
-              className="flex-1 bg-hall-2 border border-rack rounded-xl px-4 py-2.5 text-sm text-frost font-mono placeholder:text-mist/50 focus:border-coolant/50 focus:outline-none transition-colors"
-            />
-            <button
-              onClick={handleSearch}
-              disabled={searchLoading}
-              className="inline-flex items-center gap-2 rounded-xl bg-coolant/90 hover:bg-coolant text-abyss font-semibold px-5 py-2.5 text-sm transition-colors disabled:opacity-50"
-            >
-              {searchLoading ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
-              Search
-            </button>
-          </div>
-          {searchResults && (
-            <div className="space-y-2">
-              {searchResults.map((m, i) => (
-                <div key={i} className="rounded-lg bg-hall-2 border border-rack p-3 hover:border-coolant/40 transition-colors">
+          <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1" style={{ scrollbarWidth: "thin", scrollbarColor: "#223850 #070d16" }}>
+            {memories.length > 0 ? (
+              memories.map((m, i) => (
+                <div key={m.id || m.memory_id || i} className={`rounded-lg border p-3 transition-colors ${
+                  m.memory_type === "recommendation" 
+                    ? "bg-signal/5 border-signal/20 hover:border-signal/40" 
+                    : "bg-alert/5 border-alert/20 hover:border-alert/40"
+                }`}>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-mono text-flow">{m.memory_id}</span>
-                    <span className="text-[10px] font-mono text-signal">{m.similarity ? `${(m.similarity * 100).toFixed(0)}% match` : m.tier}</span>
+                    <span className="text-[10px] font-mono text-flow flex items-center gap-1">
+                      {m.memory_type === "recommendation" ? <CheckCircle2 size={10} className="text-signal" /> : <AlertTriangle size={10} className="text-alert" />}
+                      {m.id || m.memory_id}
+                    </span>
+                    <span className={`text-[10px] font-mono ${new Date(m.created_at) > new Date(Date.now() - 24 * 60 * 60 * 1000) ? "text-amber" : "text-mist"}`}>
+                      {new Date(m.created_at) > new Date(Date.now() - 24 * 60 * 60 * 1000) ? "hot" : "warm"}
+                    </span>
                   </div>
-                  <p className="text-xs text-fog">{m.summary_text || m.summary}</p>
+                  <p className="text-xs text-fog">{m.summary || m.summary_text}</p>
+                  <div className="text-[9px] font-mono text-mist/70 mt-1">
+                    {new Date(m.created_at).toLocaleString()}
+                  </div>
                 </div>
-              ))}
-            </div>
-          )}
+              ))
+            ) : (
+              <div className="text-center py-8 text-mist text-sm">
+                No memory entries found. Run the reasoning loop to generate memories.
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Recent Episodes */}
@@ -364,11 +379,17 @@ export default function MemoryDashboard() {
             <h2 className="font-heading font-semibold text-frost">Recent Episode History</h2>
             <span className="text-[10px] font-mono text-mist ml-auto">{totalEpisodes} total</span>
           </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[400px] overflow-y-auto pr-1" style={{ scrollbarWidth: "thin", scrollbarColor: "#223850 #070d16" }}>
-            {episodes.slice(0, 15).map((ep, i) => (
-              <EpisodeCard key={ep.episode_id || i} ep={ep} />
-            ))}
-          </div>
+          {episodes.length > 0 ? (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[400px] overflow-y-auto pr-1" style={{ scrollbarWidth: "thin", scrollbarColor: "#223850 #070d16" }}>
+              {episodes.slice(0, 15).map((ep, i) => (
+                <EpisodeCard key={ep.episode_id || i} ep={ep} />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-mist text-sm">
+              No episodes found yet. Run the reasoning loop to generate episode data.
+            </div>
+          )}
         </div>
       </section>
     </div>

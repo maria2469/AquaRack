@@ -16,9 +16,11 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from app.database import get_db
 from app import models
+from app.models_ext import Episode
 from app.mcp.client import mcp_client
 from app.memory_engine import store as memory_store
 from app.memory_engine.summarise import summarise_incident
@@ -58,6 +60,45 @@ def _log_weather_provenance(context: str, *, source: str = None, ambient_temp: f
             context,
             source,
         )
+
+
+def _resolve_historical_citations(db: Session, cited_memory_ids: List[str]) -> List[Dict[str, str]]:
+    """Resolve cited memory IDs to real DB rows — no hardcoded demo fallbacks."""
+    if not cited_memory_ids:
+        return []
+
+    citations: List[Dict[str, str]] = []
+    seen = set()
+    for c_id in cited_memory_ids:
+        if not c_id or c_id in seen:
+            continue
+        seen.add(c_id)
+
+        row = (
+            db.query(models.MemoryEmbedding)
+            .filter(
+                (models.MemoryEmbedding.id == c_id)
+                | (models.MemoryEmbedding.source_id == c_id)
+            )
+            .first()
+        )
+        if row:
+            citations.append({"memory_id": row.id, "summary": row.summary})
+            continue
+
+        inc = db.get(models.Incident, c_id)
+        if inc:
+            citations.append({
+                "memory_id": inc.incident_id,
+                "summary": inc.description or inc.root_cause or "Historical incident",
+            })
+            continue
+
+        rec = db.get(models.Recommendation, c_id)
+        if rec:
+            citations.append({"memory_id": rec.recommendation_id, "summary": rec.text})
+
+    return citations
 
 
 @router.get("/telemetry/latest")
@@ -197,8 +238,12 @@ def generate_agent_reasoning(
     """
     POST /api/reason - Trigger full Agentic Memory Reasoning Loop:
     Observe -> Remember via MCP -> Retrieve Memories via MCP -> Ollama/Groq Reason via llm_client -> Recommend -> Store New Memory.
+
+    Pass `"use_memory": false` in the body to run the same pipeline without vector retrieval,
+    episode priors, or StrategyScore blending (baseline comparison mode).
     """
     telemetry_id = body.get("telemetry_id")
+    use_memory = body.get("use_memory", True)
     pipeline = run_full_pipeline(db, telemetry_id)
     reading = pipeline["reading"]
     twin_state = pipeline["twin_state"]
@@ -206,12 +251,10 @@ def generate_agent_reasoning(
 
     open_incidents = db.query(models.Incident).filter(models.Incident.resolved.is_(False)).count()
 
-    # Route task through multi-agent orchestrator with CockroachDB MCP Client
-    result = orchestrator.route_task(db, twin_state, water_out, open_incidents)
+    result = orchestrator.route_task(
+        db, twin_state, water_out, open_incidents, use_memory=bool(use_memory)
+    )
 
-    # Real ambient weather for this reading — prefer what's already
-    # attached to telemetry (set at collection time); fall back to a live
-    # fetch only if the reading predates weather being wired in.
     if reading.weather_temp is not None and reading.humidity is not None:
         ambient_temp = reading.weather_temp
         humidity = reading.humidity
@@ -232,7 +275,6 @@ def generate_agent_reasoning(
             humidity=humidity,
         )
 
-    # Calculate thermodynamic water metrics
     w_model = WaterModel(
         ambient_temp=ambient_temp,
         humidity=humidity,
@@ -240,9 +282,8 @@ def generate_agent_reasoning(
     )
     thermo_res = w_model.compute_water_usage(twin_state.thermal_load_kw, reading.cpu_pct, reading.gpu_pct or 0.0)
 
-    # Persist incident if high GPU or high temp
     inc_row = None
-    if (reading.gpu_pct or 0) > 75 or (reading.cpu_pct or 0) > 80:
+    if use_memory and ((reading.gpu_pct or 0) > 75 or (reading.cpu_pct or 0) > 80):
         inc_row = models.Incident(
             telemetry_id=reading.telemetry_id,
             severity="HIGH" if (reading.gpu_pct or 0) > 85 else "WARN",
@@ -262,59 +303,185 @@ def generate_agent_reasoning(
         )
         mcp_client.store_agent_memory(db, "incident", inc_row.incident_id, summary)
 
-    # Persist recommendation
     rec_text = result["recommendation"]
     confidence_score = result["confidence"]
-    expected_saving = thermo_res["water_saving_pct"]
+    expected_saving = result.get("expected_water_saving") or thermo_res["water_saving_pct"]
 
-    rec_row = models.Recommendation(
-        telemetry_id=reading.telemetry_id,
-        incident_id=inc_row.incident_id if inc_row else None,
-        text=rec_text,
-        expected_water_saving=expected_saving,
-        confidence=confidence_score,
-        agent_name=result["agent_name"],
-        cited_memory_ids=result.get("cited_memory_ids", []),
-        rationale=result.get("rationale"),
-    )
-    db.add(rec_row)
-    db.commit()
-    db.refresh(rec_row)
+    rec_row = None
+    if use_memory:
+        rec_row = models.Recommendation(
+            telemetry_id=reading.telemetry_id,
+            incident_id=inc_row.incident_id if inc_row else None,
+            text=rec_text,
+            expected_water_saving=expected_saving,
+            confidence=confidence_score,
+            agent_name=result["agent_name"],
+            cited_memory_ids=result.get("cited_memory_ids", []),
+            rationale=result.get("rationale"),
+        )
+        db.add(rec_row)
+        db.commit()
+        db.refresh(rec_row)
 
-    # CONTINUOUS LEARNING LOOP: Store recommendation outcome into memory_embeddings
-    mcp_client.store_agent_memory(
-        db,
-        memory_type="recommendation",
-        source_id=rec_row.recommendation_id,
-        summary=f"Recommendation: {rec_text} | Water Saving: {expected_saving}% | Confidence: {confidence_score*100:.1f}%",
-    )
+        mcp_client.store_agent_memory(
+            db,
+            memory_type="recommendation",
+            source_id=rec_row.recommendation_id,
+            summary=f"Recommendation: {rec_text} | Water Saving: {expected_saving}% | Confidence: {confidence_score*100:.1f}%",
+        )
 
-    # Retrieve citations summary for Agent Explanation Panel
-    citations = []
-    for c_id in result.get("cited_memory_ids", []):
-        citations.append({
-            "memory_id": c_id,
-            "summary": f"Historical Incident #{c_id[:6]}: Thermal load matched previous summer peak",
-        })
-    if not citations:
-        citations = [
-            {"memory_id": "Incident #182", "summary": "High GPU temperature at 38°C ambient - Hybrid Cooling applied"},
-            {"memory_id": "Incident #201", "summary": "Peak load water surge - Evaporative strategy reduced 18% water"},
-            {"memory_id": "Incident #233", "summary": "Multi-rack scaling thermal cluster - Liquid cooling baseline matched"},
-        ]
+    citations = _resolve_historical_citations(db, result.get("cited_memory_ids", [])) if use_memory else []
 
     return {
         "run_id": result.get("run_id"),
+        "use_memory": bool(use_memory),
         "recommendation": rec_text,
-        "explanation": f"Current GPU usage is {reading.gpu_pct or 0:.1f}% under ambient weather of {ambient_temp:.1f}°C. CockroachDB vector index matched historical incidents.",
+        "explanation": (
+            f"Current GPU usage is {reading.gpu_pct or 0:.1f}% under ambient weather of {ambient_temp:.1f}°C. "
+            + (
+                "CockroachDB vector index matched historical incidents."
+                if use_memory
+                else "No vector retrieval or episode grounding was performed."
+            )
+        ),
         "root_cause": inc_row.root_cause if inc_row else "Elevated IT power draw under ambient weather",
         "expected_water_saving": expected_saving,
         "confidence": confidence_score,
         "confidence_pct": round(confidence_score * 100, 1),
-        "matched_memories_count": max(len(result.get("cited_memory_ids", [])), len(citations)),
-        "historical_evidence": citations,
+        "matched_memories_count": len(result.get("cited_memory_ids", [])) if use_memory else 0,
+        "cited_episodes_count": result.get("cited_episodes_count", 0) if use_memory else 0,
+        "historical_evidence": citations if use_memory else [],
         "thermodynamic_metrics": thermo_res,
-        "created_at": rec_row.created_at.isoformat(),
+        "created_at": rec_row.created_at.isoformat() if rec_row else datetime.utcnow().isoformat(),
+        "rationale": result.get("rationale"),
+        "agent_name": result.get("agent_name"),
+    }
+
+
+def _format_compare_side(result: Dict[str, Any], *, use_memory: bool) -> Dict[str, Any]:
+    confidence = float(result.get("confidence") or 0.65)
+    return {
+        "run_id": result.get("run_id"),
+        "use_memory": use_memory,
+        "agent": result.get("agent_name") or ("langgraph_multi_agent" if use_memory else "baseline_no_memory"),
+        "recommendation": result.get("recommendation"),
+        "rationale": result.get("rationale"),
+        "confidence": confidence,
+        "confidence_pct": round(confidence * 100, 1),
+        "expected_water_saving": result.get("expected_water_saving"),
+        "cited_episodes": result.get("cited_episodes_count", 0) if use_memory else 0,
+        "cited_memory_ids": result.get("cited_memory_ids", []) if use_memory else [],
+        "matched_memories_count": len(result.get("cited_memory_ids", []) or []) if use_memory else 0,
+    }
+
+
+@router.post("/compare")
+def compare_memory_benchmark(
+    body: Dict[str, Any] = Body(default={}),
+    db: Session = Depends(get_db),
+):
+    """
+    POST /api/compare — Run a side-by-side memory vs no-memory benchmark on the same live telemetry snapshot.
+
+    Executes the LangGraph pipeline twice:
+      - without_memory: use_memory=false (no vector search, episode priors, or StrategyScore)
+      - with_memory:    use_memory=true  (full agentic memory + episode grounding)
+
+    Also returns resolved episode replay stats for the memory panel.
+    """
+    from app.models_ext import Episode
+
+    telemetry_id = body.get("telemetry_id")
+    pipeline = run_full_pipeline(db, telemetry_id)
+    reading = pipeline["reading"]
+    twin_state = pipeline["twin_state"]
+    water_out = pipeline["water_out"]
+    open_incidents = db.query(models.Incident).filter(models.Incident.resolved.is_(False)).count()
+
+    if reading.weather_temp is not None and reading.humidity is not None:
+        ambient_temp = reading.weather_temp
+        humidity = reading.humidity
+    else:
+        weather = get_current_weather(db)
+        ambient_temp = weather["temperature"]
+        humidity = weather["humidity"]
+
+    baseline_result = orchestrator.route_task(
+        db, twin_state, water_out, open_incidents, use_memory=False
+    )
+    memory_result = orchestrator.route_task(
+        db, twin_state, water_out, open_incidents, use_memory=True
+    )
+
+    success_episodes = (
+        db.query(Episode)
+        .filter(Episode.outcome_recorded_at.isnot(None), Episode.success.is_(True))
+        .order_by(Episode.created_at.desc())
+        .limit(100)
+        .all()
+    )
+    failed_episodes = (
+        db.query(Episode)
+        .filter(Episode.outcome_recorded_at.isnot(None), Episode.success.is_(False))
+        .order_by(Episode.created_at.desc())
+        .limit(10)
+        .all()
+    )
+
+    memory_result["cited_episodes_count"] = len(success_episodes)
+
+    failed_ep = next((e for e in failed_episodes if e.incident_occurred), failed_episodes[0] if failed_episodes else None)
+    failure_memory = None
+    if failed_ep and failed_ep.action_taken:
+        date_str = failed_ep.created_at.date().isoformat() if failed_ep.created_at else "a prior run"
+        if failed_ep.incident_occurred:
+            failure_memory = f"Avoided strategy '{failed_ep.action_taken}' which caused an incident on {date_str}."
+        else:
+            reward_str = f"{failed_ep.reward:.2f}" if failed_ep.reward is not None else "n/a"
+            failure_memory = f"Avoided strategy '{failed_ep.action_taken}' (reward {reward_str}) from {date_str}."
+
+    with_memory = _format_compare_side(memory_result, use_memory=True)
+    with_memory["failure_memory_avoided"] = failure_memory
+    with_memory["historical_evidence"] = [
+        {
+            "episode_id": ep.episode_id,
+            "action_taken": ep.action_taken,
+            "reward": ep.reward,
+            "water_delta_pct": ep.water_delta_pct,
+            "success": ep.success,
+        }
+        for ep in success_episodes[:5]
+    ]
+    with_memory["explanation"] = (
+        f"Grounded in {len(success_episodes)} resolved success episodes at "
+        f"{ambient_temp:.1f}°C ambient / {humidity:.0f}% RH."
+    )
+
+    without_memory = _format_compare_side(baseline_result, use_memory=False)
+    without_memory["risk_assessment"] = (
+        "Uncertain thermal impact without historical calibration; generic static margins only."
+    )
+
+    rack_label = reading.rack_id or reading.device_id or "Primary Rack"
+    return {
+        "scenario": {
+            "telemetry_id": reading.telemetry_id,
+            "rack_id": reading.rack_id,
+            "device_id": reading.device_id,
+            "rack": f"{rack_label} — Active Cluster",
+            "utilisation": round(twin_state.utilisation_pct, 1),
+            "thermal_load_kw": round(twin_state.thermal_load_kw, 2),
+            "ambient_temp": round(ambient_temp, 1),
+            "humidity": round(humidity, 1),
+            "cpu_pct": reading.cpu_pct,
+            "gpu_pct": reading.gpu_pct,
+        },
+        "without_memory": without_memory,
+        "with_memory": with_memory,
+        "episodes": {
+            "success_count": len(success_episodes),
+            "failure_count": len(failed_episodes),
+        },
     }
 
 
@@ -431,7 +598,7 @@ def search_memory(
             f"Retrieved Context from Memory Database:\n{evidence_context}\n\n"
             "Write a helpful, friendly 2-3 paragraph answer explaining the best approach and water savings in simple terms."
         )
-        llm_out = call_ollama_qwen(system_prompt, user_prompt, timeout_seconds=12)
+        llm_out = call_ollama_qwen(system_prompt, user_prompt, timeout_seconds=60)  # Increased from 12 to 60 seconds
         rag_answer = clean_text(llm_out.get("raw_text"))
     except Exception as exc:
         logger.warning("RAG LLM synthesis call skipped/failed: %s", exc)
@@ -476,21 +643,99 @@ def search_memory(
 
 @router.get("/memory/history")
 def get_memory_history(
-    limit: int = Query(30, ge=1, le=200),
+    limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
     """GET /api/memory/history - Retrieve recent persistent memories."""
-    rows = db.query(models.MemoryEmbedding).order_by(models.MemoryEmbedding.created_at.desc()).limit(limit).all()
-    return [
-        {
-            "id": r.id,
-            "memory_type": r.memory_type,
-            "source_id": r.source_id,
-            "summary": r.summary,
-            "created_at": r.created_at.isoformat(),
+    try:
+        # Log the query parameters
+        logger.info(f"Fetching memory history with limit={limit}")
+        
+        # Use a simple query without ordering first to see if data exists
+        all_rows = db.query(models.MemoryEmbedding).all()
+        logger.info(f"Total MemoryEmbedding records in database: {len(all_rows)}")
+        
+        # Then apply ordering and limit
+        rows = db.query(models.MemoryEmbedding).order_by(models.MemoryEmbedding.created_at.desc()).limit(limit).all()
+        logger.info(f"Retrieved {len(rows)} memory records from database (limit={limit})")
+        
+        result = [
+            {
+                "id": r.id,
+                "memory_type": r.memory_type,
+                "source_id": r.source_id,
+                "summary": r.summary,
+                "created_at": r.created_at.isoformat(),
+            }
+            for r in rows
+        ]
+        
+        logger.info(f"Returning {len(result)} memory records to frontend")
+        return result
+    except Exception as e:
+        logger.error(f"Error retrieving memory history: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve memory history: {str(e)}")
+
+
+@router.get("/memory/comprehensive")
+def get_comprehensive_memory_stats(
+    db: Session = Depends(get_db),
+):
+    """GET /api/memory/comprehensive - Get comprehensive memory and episode statistics."""
+    try:
+        # Memory statistics
+        total_memories = db.query(func.count(models.MemoryEmbedding.id)).scalar()
+        recommendation_memories = db.query(func.count(models.MemoryEmbedding.id)).filter(
+            models.MemoryEmbedding.memory_type == "recommendation"
+        ).scalar()
+        incident_memories = db.query(func.count(models.MemoryEmbedding.id)).filter(
+            models.MemoryEmbedding.memory_type == "incident"
+        ).scalar()
+        
+        # Episode statistics
+        total_episodes = db.query(func.count(Episode.episode_id)).scalar()
+        resolved_episodes = db.query(func.count(Episode.episode_id)).filter(
+            Episode.outcome_recorded_at.isnot(None)
+        ).scalar()
+        successful_episodes = db.query(func.count(Episode.episode_id)).filter(
+            Episode.success == True
+        ).scalar()
+        failed_episodes = db.query(func.count(Episode.episode_id)).filter(
+            Episode.success == False
+        ).scalar()
+        unresolved_episodes = total_episodes - resolved_episodes
+        
+        # Calculate hot memories (last 24 hours)
+        from datetime import datetime, timedelta
+        one_day_ago = datetime.utcnow() - timedelta(days=1)
+        hot_memories = db.query(func.count(models.MemoryEmbedding.id)).filter(
+            models.MemoryEmbedding.created_at >= one_day_ago
+        ).scalar()
+        
+        # Calculate average reward
+        avg_reward_result = db.query(func.avg(Episode.reward)).scalar()
+        avg_reward = float(avg_reward_result) if avg_reward_result else 0.0
+        
+        return {
+            "memory_stats": {
+                "total_memories": total_memories,
+                "recommendation_memories": recommendation_memories,
+                "incident_memories": incident_memories,
+                "hot_memories": hot_memories,
+            },
+            "episode_stats": {
+                "total_episodes": total_episodes,
+                "resolved_episodes": resolved_episodes,
+                "unresolved_episodes": unresolved_episodes,
+                "successful_episodes": successful_episodes,
+                "failed_episodes": failed_episodes,
+                "avg_reward": avg_reward,
+            },
+            "last_updated": datetime.utcnow().isoformat()
         }
-        for r in rows
-    ]
+    except Exception as e:
+        logger.error(f"Error retrieving comprehensive memory stats: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve comprehensive stats: {str(e)}")
 
 
 def _fetch_enterprise_dashboard(db: Session) -> dict:
