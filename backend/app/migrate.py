@@ -3,6 +3,7 @@ Database migration for multi-device support and rack reasoning persistence.
 
 Adds device_id columns to tables for device-specific data isolation.
 Creates rack_reasoning_results table for fleet dashboard persistence.
+Removes foreign key constraint from episodes.rack_id to support fleet reasoning.
 """
 import logging
 from app.database import SessionLocal, engine
@@ -37,6 +38,14 @@ def run_migration():
             print("Added device_id to recommendations")
         except Exception as e:
             print(f"Error adding device_id to recommendations: {e}")
+
+        # Remove foreign key constraint from episodes.rack_id to support fleet reasoning
+        try:
+            # Drop the foreign key constraint if it exists
+            db.execute(text("ALTER TABLE episodes DROP CONSTRAINT IF EXISTS episodes_rack_id_fkey"))
+            print("Removed foreign key constraint from episodes.rack_id")
+        except Exception as e:
+            print(f"Error removing foreign key constraint: {e}")
 
         # Create rack_reasoning_results table
         try:
