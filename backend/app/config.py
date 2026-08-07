@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     # API
     # ==========================================================
     API_HOST: str = "127.0.0.1"
-    API_PORT: int = 8000
+    API_PORT: int = 8004
     API_TOKEN: str = ""
 
     # ==========================================================
@@ -101,8 +101,9 @@ class Settings(BaseSettings):
     # COLLECTOR
     # ==========================================================
     DEVICE_ID: str = os.getenv("AQUARACK_DEVICE_ID", "rack-01-primary")
-    POLL_INTERVAL_SECONDS: int = 5
+    POLL_INTERVAL_SECONDS: int = 30  # Increased to 30 seconds to reduce API load and prevent timeouts
     LOCAL_QUEUE_DB: str = "./collector_queue.db"
+    COLLECTOR_ENABLED: bool = False  # Temporarily disabled to ensure stable backend
 
     # ==========================================================
     # REPORTS

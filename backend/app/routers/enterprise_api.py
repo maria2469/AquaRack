@@ -14,7 +14,7 @@ import logging
 import re
 from datetime import datetime
 from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, Body, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -30,10 +30,23 @@ from app.water_model.thermo import WaterModel
 from app.digital_twin.opendc_adapter import simulate_scaled_racks
 from app.services.weather_services import get_current_weather
 from app.db_retry import crdb_retry
+from app.utils.device_id import get_or_create_device_id, validate_device_id
 
 logger = logging.getLogger("aquarack.enterprise_api")
 
 router = APIRouter(prefix="/api", tags=["enterprise"])
+
+
+def get_device_id(request: Request) -> str:
+    """
+    Extract device ID from request headers or generate one.
+    This dependency ensures data isolation between different devices.
+    """
+    # Try to get device ID from headers
+    device_id = request.headers.get("X-Device-ID") or request.headers.get("Device-ID")
+    
+    # Validate and return
+    return get_or_create_device_id(device_id)
 
 
 def _log_weather_provenance(context: str, *, source: str = None, ambient_temp: float = None,
@@ -644,19 +657,20 @@ def search_memory(
 @router.get("/memory/history")
 def get_memory_history(
     limit: int = Query(100, ge=1, le=500),
+    device_id: str = Depends(get_device_id),
     db: Session = Depends(get_db),
 ):
-    """GET /api/memory/history - Retrieve recent persistent memories."""
+    """GET /api/memory/history - Retrieve recent persistent memories for the current device."""
     try:
         # Log the query parameters
-        logger.info(f"Fetching memory history with limit={limit}")
+        logger.info(f"Fetching memory history with limit={limit}, device_id={device_id}")
         
         # Use a simple query without ordering first to see if data exists
-        all_rows = db.query(models.MemoryEmbedding).all()
-        logger.info(f"Total MemoryEmbedding records in database: {len(all_rows)}")
+        all_rows = db.query(models.MemoryEmbedding).filter(models.MemoryEmbedding.device_id == device_id).all()
+        logger.info(f"Total MemoryEmbedding records for device {device_id}: {len(all_rows)}")
         
         # Then apply ordering and limit
-        rows = db.query(models.MemoryEmbedding).order_by(models.MemoryEmbedding.created_at.desc()).limit(limit).all()
+        rows = db.query(models.MemoryEmbedding).filter(models.MemoryEmbedding.device_id == device_id).order_by(models.MemoryEmbedding.created_at.desc()).limit(limit).all()
         logger.info(f"Retrieved {len(rows)} memory records from database (limit={limit})")
         
         result = [
@@ -679,28 +693,34 @@ def get_memory_history(
 
 @router.get("/memory/comprehensive")
 def get_comprehensive_memory_stats(
+    device_id: str = Depends(get_device_id),
     db: Session = Depends(get_db),
 ):
-    """GET /api/memory/comprehensive - Get comprehensive memory and episode statistics."""
+    """GET /api/memory/comprehensive - Get comprehensive memory and episode statistics for the current device."""
     try:
         # Memory statistics
-        total_memories = db.query(func.count(models.MemoryEmbedding.id)).scalar()
+        total_memories = db.query(func.count(models.MemoryEmbedding.id)).filter(models.MemoryEmbedding.device_id == device_id).scalar()
         recommendation_memories = db.query(func.count(models.MemoryEmbedding.id)).filter(
+            models.MemoryEmbedding.device_id == device_id,
             models.MemoryEmbedding.memory_type == "recommendation"
         ).scalar()
         incident_memories = db.query(func.count(models.MemoryEmbedding.id)).filter(
+            models.MemoryEmbedding.device_id == device_id,
             models.MemoryEmbedding.memory_type == "incident"
         ).scalar()
         
         # Episode statistics
-        total_episodes = db.query(func.count(Episode.episode_id)).scalar()
+        total_episodes = db.query(func.count(Episode.episode_id)).filter(Episode.device_id == device_id).scalar()
         resolved_episodes = db.query(func.count(Episode.episode_id)).filter(
+            Episode.device_id == device_id,
             Episode.outcome_recorded_at.isnot(None)
         ).scalar()
         successful_episodes = db.query(func.count(Episode.episode_id)).filter(
+            Episode.device_id == device_id,
             Episode.success == True
         ).scalar()
         failed_episodes = db.query(func.count(Episode.episode_id)).filter(
+            Episode.device_id == device_id,
             Episode.success == False
         ).scalar()
         unresolved_episodes = total_episodes - resolved_episodes
@@ -709,11 +729,12 @@ def get_comprehensive_memory_stats(
         from datetime import datetime, timedelta
         one_day_ago = datetime.utcnow() - timedelta(days=1)
         hot_memories = db.query(func.count(models.MemoryEmbedding.id)).filter(
+            models.MemoryEmbedding.device_id == device_id,
             models.MemoryEmbedding.created_at >= one_day_ago
         ).scalar()
         
         # Calculate average reward
-        avg_reward_result = db.query(func.avg(Episode.reward)).scalar()
+        avg_reward_result = db.query(func.avg(Episode.reward)).filter(Episode.device_id == device_id).scalar()
         avg_reward = float(avg_reward_result) if avg_reward_result else 0.0
         
         return {
@@ -731,6 +752,7 @@ def get_comprehensive_memory_stats(
                 "failed_episodes": failed_episodes,
                 "avg_reward": avg_reward,
             },
+            "device_id": device_id,
             "last_updated": datetime.utcnow().isoformat()
         }
     except Exception as e:

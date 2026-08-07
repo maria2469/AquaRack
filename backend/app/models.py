@@ -156,6 +156,7 @@ class MemoryEmbedding(Base):
     """
     __tablename__ = "memory_embeddings"
     id = Column(String, primary_key=True, default=_uuid)
+    device_id = Column(String, nullable=False, index=True)  # Device-specific memory isolation
     memory_type = Column(String, nullable=False, index=True)  # incident | recommendation | summary | telemetry
     source_id = Column(String, nullable=False, index=True)
     embedding = Column(JSON, nullable=False)
@@ -166,6 +167,7 @@ class MemoryEmbedding(Base):
 class Recommendation(Base):
     __tablename__ = "recommendations"
     recommendation_id = Column(String, primary_key=True, default=_uuid)
+    device_id = Column(String, nullable=False, index=True)  # Device-specific recommendations
     telemetry_id = Column(String, ForeignKey("telemetry.telemetry_id"), nullable=True)
     incident_id = Column(String, ForeignKey("incidents.incident_id"), nullable=True)
     memory_id = Column(String, ForeignKey("memories.memory_id"), nullable=True)

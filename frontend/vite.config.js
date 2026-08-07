@@ -11,7 +11,7 @@ export default defineConfig({
       // Proxies /api/v1/* to the AquaMind AI FastAPI backend during development.
       // In production, set VITE_API_BASE_URL instead (see .env.example).
       '/api': {
-        target: 'http://127.0.0.1:8000',
+        target: 'http://127.0.0.1:8004',
         changeOrigin: true,
         // Prevent buffering of SSE streams (Agent Reasoning Console)
         configure: (proxy) => {

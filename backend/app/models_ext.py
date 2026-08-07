@@ -66,6 +66,7 @@ class Episode(Base):
     __tablename__ = "episodes"
     episode_id = Column(String, primary_key=True, default=_uuid)
     run_id = Column(String, nullable=False, index=True)
+    device_id = Column(String, nullable=False, index=True)  # Device-specific episode isolation
     rack_id = Column(String, ForeignKey("racks.rack_id"), nullable=True)
     recommendation_id = Column(String, ForeignKey("recommendations.recommendation_id"), nullable=True)
     telemetry_snapshot = Column(JSON, nullable=False)

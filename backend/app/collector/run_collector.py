@@ -20,18 +20,23 @@ from app.collector.local_queue import LocalQueue
 from app.collector.client import IngestionClient
 from app.services.weather_services import get_current_weather
 from app.database import SessionLocal
+from app.utils.device_id import generate_device_id
 
 logger = logging.getLogger("aquamind.collector")
 
 
 def run(api_base_url: str = None, stop_event=None):
-    api_base_url = api_base_url or f"http://{settings.API_HOST}:{settings.API_PORT}"
+    # Use the correct port (8002) instead of config default
+    api_base_url = api_base_url or f"http://127.0.0.1:8002"
     queue = LocalQueue(settings.LOCAL_QUEUE_DB)
-    client = IngestionClient(api_base_url, queue, api_token=settings.API_TOKEN)
+    
+    # Use a consistent device ID for this machine
+    device_id = generate_device_id()
+    client = IngestionClient(api_base_url, queue, api_token=settings.API_TOKEN, device_id=device_id)
 
     logger.info(
         "Telemetry collector starting: device=%s interval=%ss target=%s",
-        settings.DEVICE_ID,
+        device_id,
         settings.POLL_INTERVAL_SECONDS,
         api_base_url,
     )
@@ -42,7 +47,7 @@ def run(api_base_url: str = None, stop_event=None):
             break
         try:
             raw = collect_raw_reading()
-            reading = normalize(raw, device_id=settings.DEVICE_ID)
+            reading = normalize(raw, device_id=device_id)
 
             # Attach real ambient weather. Uses a short-lived DB session
             # purely so the weather service can persist into the Weather

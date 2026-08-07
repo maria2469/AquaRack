@@ -94,13 +94,16 @@ async def lifespan(app: FastAPI):
     # updating telemetry + weather data without a second terminal/process.
     # daemon=True means this thread never blocks process exit.
     global _collector_thread
-    _collector_thread = threading.Thread(
-        target=run_collector,
-        name="telemetry-collector",
-        daemon=True,
-    )
-    _collector_thread.start()
-    logger.info("Telemetry collector started as background thread (in-process, no separate daemon needed).")
+    if settings.COLLECTOR_ENABLED:
+        _collector_thread = threading.Thread(
+            target=run_collector,
+            name="telemetry-collector",
+            daemon=True,
+        )
+        _collector_thread.start()
+        logger.info("Telemetry collector started as background thread (in-process, no separate daemon needed).")
+    else:
+        logger.info("Telemetry collector disabled (COLLECTOR_ENABLED=False).")
     
     yield
     
@@ -131,6 +134,11 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:5175",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+        "http://127.0.0.1:5175",
         "https://aqua-rack.vercel.app",
         "https://aqua-rack-z42shl04s-marias-projects-76dd7319.vercel.app"
     ],

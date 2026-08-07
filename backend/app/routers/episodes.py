@@ -10,11 +10,12 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models_ext import Episode
+from app.utils.device_id import get_or_create_device_id
 
 logger = logging.getLogger("aquamind.router.episodes")
 router = APIRouter(prefix="/api/v1/episodes", tags=["episodes"])
@@ -28,15 +29,17 @@ def get_episodes_replay(
     action: Optional[str] = Query(None, description="Filter by action_taken value"),
     limit: int = Query(100, ge=1, le=500, description="Maximum number of episodes to return"),
     include_unresolved: bool = Query(False, description="Include episodes without outcomes (for dashboard)"),
+    request: Request = None,
     db: Session = Depends(get_db),
 ):
     """
-    Return Episode rows optionally filtered by rack, success flag, minimum reward, or action taken.
+    Return Episode rows for the current device optionally filtered by rack, success flag, minimum reward, or action taken.
     By default only returns resolved episodes (outcome_recorded_at IS NOT NULL).
     Set include_unresolved=True to get all episodes including unresolved ones.
     Results are ordered by created_at DESC (most recent first).
     """
-    q = db.query(Episode)
+    device_id = get_or_create_device_id(request.headers.get("X-Device-ID") if request else None)
+    q = db.query(Episode).filter(Episode.device_id == device_id)
     
     # Only filter for resolved episodes if not explicitly including unresolved
     if not include_unresolved:
@@ -53,7 +56,7 @@ def get_episodes_replay(
 
     episodes = q.order_by(Episode.created_at.desc()).limit(limit).all()
     
-    logger.info(f"Returning {len(episodes)} episodes (include_unresolved={include_unresolved})")
+    logger.info(f"Returning {len(episodes)} episodes for device {device_id} (include_unresolved={include_unresolved})")
 
     return [
         {
