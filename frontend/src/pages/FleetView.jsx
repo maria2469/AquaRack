@@ -185,7 +185,18 @@ export default function FleetView() {
   };
 
   const openDetailModal = (rack) => {
-    setShowDetailModal(rack);
+    // Ensure the modal gets a properly structured object with all the data
+    const modalData = {
+      ...rack,
+      // Ensure result data is accessible at both top level and nested
+      result: rack.result || {},
+      recommendation: rack.result?.recommendation || rack.recommendation,
+      rationale: rack.result?.rationale || rack.rationale,
+      confidence: rack.result?.confidence || rack.confidence,
+      expected_water_saving: rack.result?.expected_water_saving || rack.expected_water_saving,
+      reasoning_logs: rack.reasoning_logs || rack.result?.reasoning_logs || []
+    };
+    setShowDetailModal(modalData);
   };
 
   const closeDetailModal = () => {
@@ -994,13 +1005,15 @@ export default function FleetView() {
                   <div className="bg-hall-2 rounded-lg p-3 text-center">
                     <div className="text-xs text-mist mb-1">Confidence</div>
                     <div className="text-xl font-bold text-flow">
-                      {showDetailModal.result?.confidence ? (showDetailModal.result.confidence * 100).toFixed(1) : "0.0"}%
+                      {showDetailModal.result?.confidence ? (showDetailModal.result.confidence * 100).toFixed(1) : 
+                       showDetailModal.confidence ? (showDetailModal.confidence * 100).toFixed(1) : "0.0"}%
                     </div>
                   </div>
                   <div className="bg-hall-2 rounded-lg p-3 text-center">
                     <div className="text-xs text-mist mb-1">Water Saving</div>
                     <div className="text-xl font-bold text-coolant">
-                      {showDetailModal.result?.expected_water_saving ? showDetailModal.result.expected_water_saving.toFixed(3) : "0.000"}L
+                      {showDetailModal.result?.expected_water_saving ? showDetailModal.result.expected_water_saving.toFixed(3) :
+                       showDetailModal.expected_water_saving ? showDetailModal.expected_water_saving.toFixed(3) : "0.000"}L
                     </div>
                   </div>
                   <div className="bg-hall-2 rounded-lg p-3 text-center">
@@ -1012,14 +1025,15 @@ export default function FleetView() {
                 </div>
 
                 {/* Agent Pipeline Timeline */}
-                {showDetailModal.reasoning_logs && showDetailModal.reasoning_logs.length > 0 && (
+                {(showDetailModal.reasoning_logs && showDetailModal.reasoning_logs.length > 0) ||
+                 (showDetailModal.result?.reasoning_logs && showDetailModal.result.reasoning_logs.length > 0) && (
                   <div>
                     <div className="text-sm font-semibold text-frost mb-3 flex items-center gap-2">
                       <BrainCircuit size={16} className="text-flow" />
                       Agent Pipeline
                     </div>
                     <div className="flex items-center justify-between mb-3">
-                      {showDetailModal.reasoning_logs.map((log, idx) => (
+                      {(showDetailModal.reasoning_logs || showDetailModal.result?.reasoning_logs || []).map((log, idx) => (
                         <div key={idx} className="flex flex-col items-center flex-1">
                           <div className="w-8 h-8 rounded-full bg-flow flex items-center justify-center text-sm font-bold text-frost mb-1">
                             {idx + 1}
@@ -1037,7 +1051,7 @@ export default function FleetView() {
                       />
                     </div>
                     <div className="mt-3 space-y-2">
-                      {showDetailModal.reasoning_logs.map((log, idx) => (
+                      {(showDetailModal.reasoning_logs || showDetailModal.result?.reasoning_logs || []).map((log, idx) => (
                         <div key={idx} className="text-xs border-l-2 border-coolant pl-3 py-2 bg-hall-2 rounded">
                           <div className="text-flow font-medium mb-1">{log.agent}</div>
                           <div className="text-fog">{log.message}</div>
@@ -1054,16 +1068,18 @@ export default function FleetView() {
                 <div>
                   <div className="text-sm font-semibold text-frost mb-2">Recommendation</div>
                   <div className="text-sm text-fog leading-relaxed bg-hall-2 rounded-lg p-3">
-                    {showDetailModal.result?.recommendation || "No recommendation available"}
+                    {showDetailModal.result?.recommendation || 
+                     showDetailModal.recommendation || 
+                     "No recommendation available"}
                   </div>
                 </div>
 
                 {/* Rationale */}
-                {showDetailModal.result?.rationale && (
+                {(showDetailModal.result?.rationale || showDetailModal.rationale) && (
                   <div>
                     <div className="text-sm font-semibold text-frost mb-2">Rationale</div>
                     <div className="text-sm text-fog leading-relaxed bg-hall-2 rounded-lg p-3">
-                      {showDetailModal.result.rationale}
+                      {showDetailModal.result?.rationale || showDetailModal.rationale}
                     </div>
                   </div>
                 )}
@@ -1075,7 +1091,7 @@ export default function FleetView() {
                     Full API Response
                   </div>
                   <div className="bg-hall-2 rounded-lg p-3">
-                    <JsonTreeView data={showDetailModal.result} />
+                    <JsonTreeView data={showDetailModal.result || showDetailModal} />
                   </div>
                 </div>
 
