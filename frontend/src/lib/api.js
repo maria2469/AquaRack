@@ -89,6 +89,10 @@ export const getLatestRecommendation = () =>
 export const searchMemory = (q, k = 5) =>
   api.get("/api/v1/memory/search", { params: { q, k } }).then((r) => r.data);
 
+/** POST /api/memory/search - Search memory with semantic search */
+export const postMemorySearch = (query, k = 5) =>
+  api.post("/api/memory/search", { query, k }).then((r) => r.data);
+
 /** GET /api/memory/history?limit= -> Memory history */
 export const getMemoryHistory = (limit = 50) =>
   api.get("/api/memory/history", { params: { limit } }).then((r) => r.data);
@@ -122,6 +126,10 @@ export const postReason = (telemetry_id, use_memory = true) =>
 /** POST /api/compare — side-by-side memory vs no-memory benchmark (single blocking call) */
 export const postCompare = (telemetry_id) =>
   reasonApi.post("/api/compare", { telemetry_id }).then((r) => r.data);
+
+/** POST /api/benchmark - Run memory vs no-memory benchmark comparison */
+export const runCompareBenchmark = (telemetry_id) =>
+  reasonApi.post("/api/benchmark", { telemetry_id }).then((r) => r.data);
 
 function formatCompareSide(reasonRes, useMemory) {
   return {

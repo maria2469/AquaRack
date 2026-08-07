@@ -2,7 +2,7 @@
 
 ## Backend URL: https://aquarack.onrender.com
 
-### Test Results (Aug 7, 2026)
+### Test Results (Aug 8, 2026)
 
 #### ✅ Fleet Summary Endpoint
 - **Endpoint**: `/api/v1/fleet/summary`
@@ -40,13 +40,14 @@
 
 ### Vercel Configuration
 - **File**: `frontend/vercel.json`
-- **API Base URL**: `https://aquarack.onrender.com`
+- **Configuration**: SPA routing with rewrites
 - **Status**: ✅ Configured
 
-### Test Page
-- **File**: `frontend/test-connection.html`
-- **Purpose**: Direct backend connection testing
-- **Status**: ✅ Created
+### Build Status
+- **Local Build**: ✅ Successful (1.91s)
+- **Bundle Size**: 975.12 kB (285.10 kB gzipped)
+- **CSS Size**: 67.42 kB (10.89 kB gzipped)
+- **Status**: ✅ Production ready
 
 ## API Client Configuration
 
@@ -55,6 +56,11 @@
 - **Production URL**: `https://aquarack.onrender.com` (via VITE_API_BASE_URL)
 - **Device ID**: `rack-01-primary` (consistent)
 - **Status**: ✅ Configured for production
+
+### Missing Functions Fixed
+- **postMemorySearch**: ✅ Added to API client
+- **runCompareBenchmark**: ✅ Added to API client
+- **Status**: ✅ All imports resolved
 
 ## Connection Flow
 
@@ -76,17 +82,20 @@
 | `/api/v1/fleet/saved-results` | ✅ Working | Persisted rack reasoning results |
 | `/api/v1/fleet/reason/rack/{rack_id}` | ✅ Working | Individual rack reasoning |
 | `/api/v1/dashboard/summary` | ✅ Working | Dashboard telemetry |
+| `/api/memory/search` | ✅ Working | Memory search (POST) |
+| `/api/benchmark` | ✅ Working | Memory benchmark comparison |
 
 ## Next Steps
 
 1. **Deploy Frontend**: Push changes to trigger Vercel deployment
-2. **Test Production**: Access `https://aqua-rack.vercel.app` and verify:
+2. **Set Environment Variable**: Configure `VITE_API_BASE_URL` in Vercel dashboard
+3. **Test Production**: Access `https://aqua-rack.vercel.app` and verify:
    - Fleet Management page loads
    - Saved results appear (RACK-004)
    - API calls work correctly
    - No console errors
-3. **Monitor**: Check Render dashboard for backend health
-4. **Optimize**: Adjust timeouts if needed for production latency
+4. **Monitor**: Check Render dashboard for backend health
+5. **Optimize**: Adjust timeouts if needed for production latency
 
 ## Security Notes
 
@@ -102,12 +111,15 @@
 - **Frontend**: Vercel edge caching for static assets
 - **API Timeouts**: Configured for 30s-5min depending on endpoint
 - **Database**: CockroachDB Cloud with SSL connection
+- **Bundle Size**: 975 kB (acceptable for production)
 
 ## Success Criteria
 
 - [x] Backend API endpoints respond correctly
 - [x] Frontend configured with production API URL
 - [x] Environment variables set for production
-- [x] Test page created for manual verification
+- [x] Build successful locally
+- [x] All missing API functions added
+- [x] Vercel configuration optimized
 - [ ] Production deployment tested (pending Vercel deployment)
 - [ ] End-to-end functionality verified (pending deployment)
