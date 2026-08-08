@@ -17,9 +17,17 @@ also avoid boilerplate; this only helps if the input text varies.
 
 
 def summarise_recommendation(twin_state, water_out: dict, rec_text: str) -> str:
+    # Handle both dict and object twin_state
+    if isinstance(twin_state, dict):
+        utilisation = twin_state.get("utilisation_pct", 0)
+        thermal_load = twin_state.get("thermal_load_kw", 0)
+    else:
+        utilisation = twin_state.utilisation_pct
+        thermal_load = twin_state.thermal_load_kw
+    
     return (
-        f"[recommendation] utilisation={twin_state.utilisation_pct}% "
-        f"thermal_load={twin_state.thermal_load_kw}kW "
+        f"[recommendation] utilisation={utilisation}% "
+        f"thermal_load={thermal_load}kW "
         f"cooling_load={water_out['cooling_load_kw']}kW "
         f"wue={water_out['wue_factor']}L/kWh "
         f"water={water_out['water_l_per_hr']}L/hr :: {rec_text}"

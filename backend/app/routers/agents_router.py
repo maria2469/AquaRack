@@ -31,20 +31,36 @@ router = APIRouter(prefix="/api/v1", tags=["agents"])
 def recommend_multi_agent(body: p1_schemas.RecommendationRequest, db: Session = Depends(get_db)):
     pipeline = run_full_pipeline(db, body.telemetry_id)
     reading = pipeline["reading"]
-    twin_state = pipeline["twin_state"]
+    twin_state = pipeline["twin_state"]  # This is now a dict with device_id
     water_out = pipeline["water_out"]
 
     open_incidents = db.query(models.Incident).filter(models.Incident.resolved.is_(False)).count()
-    result = orchestrator.route_task(db, twin_state, water_out, open_incidents)
+    
+    try:
+        result = orchestrator.route_task(db, twin_state, water_out, open_incidents)
+    except Exception as e:
+        logger.error(f"Multi-agent recommendation failed: {e}")
+        result = {
+            "run_id": "multi-agent-failed",
+            "recommendation": "Multi-agent reasoning failed",
+            "confidence": 0.5,
+            "agent_name": "multi_agent_failed",
+            "rationale": f"Reasoning error: {str(e)}"
+        }
 
     # Persist recommendation summary into agentic memory via store_memory_embedding
     summary = summarise_recommendation(twin_state, water_out, result["recommendation"])
-    memory_store.store_memory_embedding(
-        db,
-        memory_type="recommendation",
-        source_id=result.get("run_id", reading.telemetry_id),
-        summary=summary,
-    )
+    try:
+        memory_store.store_memory_embedding(
+            db,
+            memory_type="recommendation",
+            source_id=result.get("run_id", reading.telemetry_id),
+            summary=summary,
+            device_id=reading.device_id,  # Add device_id
+        )
+    except Exception as e:
+        logger.error(f"Memory storage failed: {e}")
+        # Continue with recommendation even if memory storage fails
 
     rec_row = models.Recommendation(
         telemetry_id=reading.telemetry_id,

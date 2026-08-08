@@ -210,7 +210,11 @@ def _run_job(job_id: str, spec: dict) -> None:
                 )
                 # Cooling efficiency of this rack's hardware profile feeds
                 # into thermal load before the water model sees it.
-                adjusted_thermal_kw = twin_state.thermal_load_kw / max(0.5, profile["cooling_efficiency"])
+                thermal_load_kw = twin_state.get("thermal_load_kw") if isinstance(twin_state, dict) else twin_state.thermal_load_kw
+                utilisation_pct = twin_state.get("utilisation_pct") if isinstance(twin_state, dict) else twin_state.utilisation_pct
+                power_draw_kw = twin_state.get("power_draw_kw") if isinstance(twin_state, dict) else twin_state.power_draw_kw
+                
+                adjusted_thermal_kw = thermal_load_kw / max(0.5, profile["cooling_efficiency"])
                 water_out = water.compute_water_usage(adjusted_thermal_kw)
                 db.add(
                     models.WaterModelResult(
@@ -219,12 +223,12 @@ def _run_job(job_id: str, spec: dict) -> None:
                         cooling_load_kw=water_out["cooling_load_kw"],
                         water_l_per_hr=water_out["water_l_per_hr"],
                         pue=water_out["pue"],
-                        utilisation_pct=twin_state.utilisation_pct,
+                        utilisation_pct=utilisation_pct,
                         thermal_load_kw=adjusted_thermal_kw,
-                        power_draw_kw=twin_state.power_draw_kw,
+                        power_draw_kw=power_draw_kw,
                     )
                 )
-                if twin_state.utilisation_pct >= 85:
+                if utilisation_pct >= 85:
                     from app.memory_engine.summarise import summarise_incident
                     from app.mcp.client import mcp_client
 
@@ -232,7 +236,7 @@ def _run_job(job_id: str, spec: dict) -> None:
                         device_id=device_id,  # Add device_id
                         telemetry_id=row.telemetry_id,
                         severity="HIGH",
-                        description=f"[{mode}] {device_id} utilisation critical at {twin_state.utilisation_pct:.1f}%",
+                        description=f"[{mode}] {device_id} utilisation critical at {utilisation_pct:.1f}%",
                         root_cause=(
                             f"Rack profile cooling_efficiency={profile['cooling_efficiency']:.2f}, "
                             f"hardware_age={profile['hardware_age']:.2f} under ambient {ambient_temp:.1f}\u00b0C"
@@ -267,14 +271,22 @@ def _run_job(job_id: str, spec: dict) -> None:
                 job.updated_at = datetime.utcnow()
                 db.commit()
 
+            # Handle both dict and object for last_twin_state
+            if isinstance(last_twin_state, dict):
+                final_util = last_twin_state.get("utilisation_pct", 0)
+                final_thermal = last_twin_state.get("thermal_load_kw", 0)
+            else:
+                final_util = last_twin_state.utilisation_pct
+                final_thermal = last_twin_state.thermal_load_kw
+                
             rack_results.append(
                 {
                     "rack_id": rack.rack_id,
                     "device_id": device_id,
                     "is_laptop_mirror": rack_index == 1,
                     "rack_profile": profile,
-                    "final_utilisation_pct": last_twin_state.utilisation_pct,
-                    "final_thermal_load_kw": last_twin_state.thermal_load_kw,
+                    "final_utilisation_pct": final_util,
+                    "final_thermal_load_kw": final_thermal,
                     "final_water_model": last_water_out,
                 }
             )

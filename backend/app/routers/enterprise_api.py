@@ -282,9 +282,20 @@ def generate_agent_reasoning(
 
     open_incidents = db.query(models.Incident).filter(models.Incident.resolved.is_(False)).count()
 
-    result = orchestrator.route_task(
-        db, twin_state, water_out, open_incidents, use_memory=bool(use_memory)
-    )
+    try:
+        result = orchestrator.route_task(
+            db, twin_state, water_out, open_incidents, use_memory=bool(use_memory)
+        )
+    except Exception as e:
+        logger.error(f"AI reasoning failed: {e}")
+        result = {
+            "run_id": "reasoning-failed",
+            "recommendation": "AI reasoning failed",
+            "confidence": 0.5,
+            "expected_water_saving": 0.0,
+            "agent_name": "reasoning_failed",
+            "rationale": f"Reasoning error: {str(e)}"
+        }
 
     if reading.weather_temp is not None and reading.humidity is not None:
         ambient_temp = reading.weather_temp
@@ -311,7 +322,11 @@ def generate_agent_reasoning(
         humidity=humidity,
         cooling_strategy="hybrid_evaporative",
     )
-    thermo_res = w_model.compute_water_usage(twin_state.thermal_load_kw, reading.cpu_pct, reading.gpu_pct or 0.0)
+    thermo_res = w_model.compute_water_usage(
+        twin_state.get("thermal_load_kw") if isinstance(twin_state, dict) else twin_state.thermal_load_kw,
+        reading.cpu_pct, 
+        reading.gpu_pct or 0.0
+    )
 
     inc_row = None
     if use_memory and ((reading.gpu_pct or 0) > 75 or (reading.cpu_pct or 0) > 80):
@@ -441,12 +456,33 @@ def compare_memory_benchmark(
         ambient_temp = weather["temperature"]
         humidity = weather["humidity"]
 
-    baseline_result = orchestrator.route_task(
-        db, twin_state, water_out, open_incidents, use_memory=False
-    )
-    memory_result = orchestrator.route_task(
-        db, twin_state, water_out, open_incidents, use_memory=True
-    )
+    try:
+        baseline_result = orchestrator.route_task(
+            db, twin_state, water_out, open_incidents, use_memory=False
+        )
+    except Exception as e:
+        logger.error(f"Baseline reasoning failed: {e}")
+        baseline_result = {
+            "run_id": "baseline-failed",
+            "recommendation": "Baseline reasoning failed",
+            "confidence": 0.5,
+            "expected_water_saving": 0.0,
+            "agent_name": "baseline_failed"
+        }
+    
+    try:
+        memory_result = orchestrator.route_task(
+            db, twin_state, water_out, open_incidents, use_memory=True
+        )
+    except Exception as e:
+        logger.error(f"Memory reasoning failed: {e}")
+        memory_result = {
+            "run_id": "memory-failed",
+            "recommendation": "Memory reasoning failed",
+            "confidence": 0.5,
+            "expected_water_saving": 0.0,
+            "agent_name": "memory_failed"
+        }
 
     success_episodes = (
         db.query(Episode)
@@ -498,14 +534,23 @@ def compare_memory_benchmark(
     )
 
     rack_label = reading.rack_id or reading.device_id or "Primary Rack"
+    
+    # Handle both dict and object twin_state
+    if isinstance(twin_state, dict):
+        utilisation = round(twin_state.get("utilisation_pct", 0), 1)
+        thermal_load = round(twin_state.get("thermal_load_kw", 0), 2)
+    else:
+        utilisation = round(twin_state.utilisation_pct, 1)
+        thermal_load = round(twin_state.thermal_load_kw, 2)
+    
     return {
         "scenario": {
             "telemetry_id": reading.telemetry_id,
             "rack_id": reading.rack_id,
             "device_id": reading.device_id,
             "rack": f"{rack_label} — Active Cluster",
-            "utilisation": round(twin_state.utilisation_pct, 1),
-            "thermal_load_kw": round(twin_state.thermal_load_kw, 2),
+            "utilisation": utilisation,
+            "thermal_load_kw": thermal_load,
             "ambient_temp": round(ambient_temp, 1),
             "humidity": round(humidity, 1),
             "cpu_pct": reading.cpu_pct,

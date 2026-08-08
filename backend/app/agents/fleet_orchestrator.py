@@ -245,7 +245,7 @@ class FleetOrchestrator:
                 cooling_strategy="hybrid_evaporative",
             )
             water_out = w_model.compute_water_usage(
-                laptop_twin_state.thermal_load_kw,
+                laptop_twin_state.get("thermal_load_kw") if isinstance(laptop_twin_state, dict) else laptop_twin_state.thermal_load_kw,
                 laptop_baseline.cpu_pct,
                 laptop_baseline.gpu_pct or 0.0
             )
@@ -428,7 +428,7 @@ class FleetOrchestrator:
                 cooling_strategy="hybrid_evaporative",
             )
             water_out = w_model.compute_water_usage(
-                laptop_twin_state.thermal_load_kw,
+                laptop_twin_state.get("thermal_load_kw") if isinstance(laptop_twin_state, dict) else laptop_twin_state.thermal_load_kw,
                 laptop_baseline.cpu_pct,
                 laptop_baseline.gpu_pct or 0.0
             )
