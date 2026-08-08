@@ -195,7 +195,7 @@ export default function MemoryDashboard() {
             </p>
           </div>
         </div>
-      </section>
+      </div>
 
       <section className="max-w-7xl mx-auto px-5 md:px-8 py-8 space-y-8">
         {/* Empty State */}
