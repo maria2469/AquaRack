@@ -30,3 +30,9 @@ coverage
 # Cache
 .cache
 .parcel-cache
+
+backend.zip
+*.zip
+.env
+.env.*
+!.env.example
