@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Server, Activity, Droplets, BrainCircuit, RefreshCw, Zap, Cpu, HardDrive, ChevronDown, ChevronUp, TrendingUp, CheckCircle, Clock, Timer, Filter, Search, SortAsc, SortDesc, BarChart3, Gauge, X } from "lucide-react";
+import { Server, Activity, Droplets, BrainCircuit, RefreshCw, Zap, Cpu, HardDrive, ChevronDown, ChevronUp, TrendingUp, CheckCircle, Clock, Timer, Filter, Search, SortAsc, SortDesc, Gauge, X } from "lucide-react";
 import { getGlobalFleetResult, setGlobalFleetResult } from "../lib/globalState";
 import { runSingleRackReasoning, getSavedRackResults } from "../lib/api";
 
@@ -312,7 +312,7 @@ export default function FleetView() {
 
   if (rackResults.every(r => !r.success)) {
     return (
-      <div className="min-h-screen bg-abyss p-6">
+      <div className="min-h-screen bg-abyss pt-28 p-6">
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <div className="flex items-center justify-between mb-8">
@@ -521,7 +521,7 @@ export default function FleetView() {
   }
 
   return (
-    <div className="min-h-screen bg-abyss p-6">
+    <div className="min-h-screen bg-abyss pt-28 p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
@@ -717,96 +717,6 @@ export default function FleetView() {
         </div>
 
         {/* Fleet-wide Visualization */}
-        <div className="card-glass rounded-xl p-4 border border-rack mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-frost flex items-center gap-2">
-              <BarChart3 size={16} className="text-flow" />
-              Fleet Overview (First 10 Racks)
-            </h3>
-            <div className="flex gap-4 text-xs">
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 bg-coolant rounded-sm"></div>
-                <span className="text-mist">CPU</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 bg-flow rounded-sm"></div>
-                <span className="text-mist">GPU</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 bg-signal rounded-sm"></div>
-                <span className="text-mist">RAM</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 bg-coolant-2 rounded-sm"></div>
-                <span className="text-mist">Cooling</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 bg-amber rounded-sm"></div>
-                <span className="text-mist">Age</span>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-end gap-1 h-24">
-            {rackResults.slice(0, 10).map((rack, index) => (
-              <div
-                key={rack.rack_id}
-                className="flex-1 flex flex-col gap-0.5 group cursor-pointer"
-                onClick={() => rack.success && openDetailModal(rack)}
-                title={`${rack.rack_id}: ${rack.success ? 'Completed - Click for details' : 'Pending - Click to run'}`}
-              >
-                <div
-                  className={`w-full rounded-sm transition-all group-hover:opacity-100 ${
-                    rack.success ? 'opacity-80' : 'opacity-40'
-                  }`}
-                  style={{
-                    height: `${Math.max((rack.cpu_factor || 1.0) * 40, 5)}%`,
-                    backgroundColor: 'rgba(43, 127, 255, 0.6)'
-                  }}
-                />
-                <div
-                  className={`w-full rounded-sm transition-all group-hover:opacity-100 ${
-                    rack.success ? 'opacity-80' : 'opacity-40'
-                  }`}
-                  style={{
-                    height: `${Math.max((rack.gpu_factor || 1.0) * 40, 5)}%`,
-                    backgroundColor: 'rgba(34, 211, 238, 0.6)'
-                  }}
-                />
-                <div
-                  className={`w-full rounded-sm transition-all group-hover:opacity-100 ${
-                    rack.success ? 'opacity-80' : 'opacity-40'
-                  }`}
-                  style={{
-                    height: `${Math.max((rack.ram_factor || 1.0) * 40, 5)}%`,
-                    backgroundColor: 'rgba(52, 224, 161, 0.6)'
-                  }}
-                />
-                <div
-                  className={`w-full rounded-sm transition-all group-hover:opacity-100 ${
-                    rack.success ? 'opacity-80' : 'opacity-40'
-                  }`}
-                  style={{
-                    height: `${Math.max((rack.cooling_efficiency || 1.0) * 40, 5)}%`,
-                    backgroundColor: 'rgba(90, 162, 255, 0.6)'
-                  }}
-                />
-                <div
-                  className={`w-full rounded-sm transition-all group-hover:opacity-100 ${
-                    rack.success ? 'opacity-80' : 'opacity-40'
-                  }`}
-                  style={{
-                    height: `${Math.max((rack.hardware_age || 1.0) * 40, 5)}%`,
-                    backgroundColor: 'rgba(255, 184, 77, 0.6)'
-                  }}
-                />
-              </div>
-            ))}
-          </div>
-          <div className="text-xs text-mist mt-2 text-center">
-            Showing first 10 racks (click bar to view details) • Blue: CPU, Cyan: GPU, Green: RAM, Light Blue: Cooling, Orange: Age
-          </div>
-        </div>
-
         {/* Error Display */}
         {error && (
           <div className="card-glass rounded-xl p-4 border border-alert mb-6">

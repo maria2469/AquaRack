@@ -178,7 +178,7 @@ export default function MemoryDashboard() {
   ];
 
   return (
-    <div className="min-h-screen bg-abyss">
+    <div className="min-h-screen bg-abyss pt-28">
       <AmbientVeil />
       <div className="relative max-w-7xl mx-auto px-5 md:px-8">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
