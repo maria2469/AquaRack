@@ -63,6 +63,7 @@ def recommend_multi_agent(body: p1_schemas.RecommendationRequest, db: Session = 
         # Continue with recommendation even if memory storage fails
 
     rec_row = models.Recommendation(
+        device_id=reading.device_id,  # Add device_id to satisfy database constraint
         telemetry_id=reading.telemetry_id,
         text=result["recommendation"],
         confidence=result["confidence"],
