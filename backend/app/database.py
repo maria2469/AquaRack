@@ -35,6 +35,14 @@ import sqlalchemy_cockroachdb  # noqa: F401
 # ---------------------------------------------------------------------
 # Automatically configure CockroachDB SSL certificate
 # ---------------------------------------------------------------------
+
+# First, remove any Windows-specific certificate paths that might be in the URL
+if "C:/" in db_url or "C:\\" in db_url:
+    # Remove Windows certificate paths from DATABASE_URL
+    import re
+    db_url = re.sub(r'[&?]sslrootcert=[^&"\s]*', '', db_url)
+    log.warning("Removed Windows certificate path from DATABASE_URL")
+
 if "sslrootcert=" not in db_url:
 
     # 1. User explicitly provided a certificate path
