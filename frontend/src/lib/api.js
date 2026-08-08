@@ -9,6 +9,17 @@ import axios from "axios";
  */
 const baseURL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
 
+export const api = axios.create({
+  baseURL,
+  timeout: 30000, // Increased timeout to 30 seconds to avoid timeouts on slow requests
+});
+
+// Dedicated instance for slow agentic endpoints (multi-agent pipeline via Ollama/Groq)
+export const reasonApi = axios.create({
+  baseURL,
+  timeout: 300000, // 5 minutes timeout for Ollama reasoning
+});
+
 // Request/Response Logging Interceptors
 const logRequest = (config) => {
   console.log(`🔵 API Request: ${config.method?.toUpperCase()} ${config.url}`, config.data || '');
@@ -30,17 +41,6 @@ api.interceptors.response.use(logResponse, logError);
 
 reasonApi.interceptors.request.use(logRequest, logError);
 reasonApi.interceptors.response.use(logResponse, logError);
-
-export const api = axios.create({
-  baseURL,
-  timeout: 30000, // Increased timeout to 30 seconds to avoid timeouts on slow requests
-});
-
-// Dedicated instance for slow agentic endpoints (multi-agent pipeline via Ollama/Groq)
-export const reasonApi = axios.create({
-  baseURL,
-  timeout: 300000, // 5 minutes timeout for Ollama reasoning
-});
 
 // Optional local bearer token support
 const token = import.meta.env.VITE_API_TOKEN;
