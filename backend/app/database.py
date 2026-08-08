@@ -40,8 +40,20 @@ if "sslrootcert=" not in db_url:
     # 1. User explicitly provided a certificate path
     cert_path = os.environ.get("COCKROACH_CERT")
 
-    # 2. Windows default location
+    # 2. Linux default location (check first for cloud environments)
     if not cert_path:
+        linux_cert = os.path.expanduser("~/.postgresql/root.crt")
+        if os.path.exists(linux_cert):
+            cert_path = linux_cert
+
+    # 3. Railway / Docker custom mount (check before Windows)
+    if not cert_path:
+        docker_cert = "/app/certs/root.crt"
+        if os.path.exists(docker_cert):
+            cert_path = docker_cert
+
+    # 4. Windows default location (only check if running on Windows)
+    if not cert_path and os.name == 'nt':
         win_cert = os.path.join(
             os.environ.get("APPDATA", ""),
             "postgresql",
@@ -49,18 +61,6 @@ if "sslrootcert=" not in db_url:
         )
         if os.path.exists(win_cert):
             cert_path = win_cert
-
-    # 3. Linux default location
-    if not cert_path:
-        linux_cert = os.path.expanduser("~/.postgresql/root.crt")
-        if os.path.exists(linux_cert):
-            cert_path = linux_cert
-
-    # 4. Railway / Docker custom mount
-    if not cert_path:
-        docker_cert = "/app/certs/root.crt"
-        if os.path.exists(docker_cert):
-            cert_path = docker_cert
 
     # 5. Use discovered certificate
     if cert_path:
@@ -72,7 +72,7 @@ if "sslrootcert=" not in db_url:
             db_url += f"?sslrootcert={cert_path}"
 
     else:
-        # 6. Modern psycopg can use OS trust store
+        # 6. Modern psycopg can use OS trust store (recommended for cloud)
         if "?" in db_url:
             db_url += "&sslrootcert=system"
         else:

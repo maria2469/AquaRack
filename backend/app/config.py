@@ -41,6 +41,12 @@ class Settings(BaseSettings):
         # Require SSL in production (no sslmode=disable allowed)
         if "sslmode=disable" in v:
             raise ValueError("SSL must be enabled for database connections in production")
+        # Ensure sslrootcert is configured for cloud deployments
+        if "sslrootcert=" not in v:
+            # For cloud deployments, we'll let database.py handle the auto-configuration
+            # But log a warning if it's missing
+            import logging
+            logging.warning("DATABASE_URL does not contain sslrootcert - will be auto-configured")
         return v
 
     # ==========================================================
