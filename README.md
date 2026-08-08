@@ -1,5 +1,9 @@
 # AquaRack — 100-Rack Agentic Digital Twin for Data Center Water & Cooling Optimization
 
+<div align="center">
+  <img src="frontend/public/logo.png" alt="AquaRack Logo" width="120" height="120">
+</div>
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![React](https://img.shields.io/badge/React_19-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://reactjs.org/)
