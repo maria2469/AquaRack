@@ -33,22 +33,29 @@ def get_or_create_device_id(device_id: Optional[str] = None) -> str:
     """
     Get the device ID from request or generate a new one.
     
+    Trusts the frontend device ID for cross-environment consistency.
+    The frontend generates device IDs based on browser characteristics,
+    ensuring the same device gets the same ID across different environments.
+    
     Args:
         device_id: Optional device ID from request headers/cookies
         
     Returns:
         The device ID to use for this request
     """
-    if device_id and device_id.startswith("device-"):
+    # Trust frontend device ID if provided (cross-environment consistency)
+    if device_id and (device_id.startswith("device-") or device_id.startswith("rack-")):
         return device_id
     
     # If no valid device ID provided, generate one based on the server's system
-    # In production, this should come from the client
+    # This is a fallback for requests without device identification
     return generate_device_id()
 
 def validate_device_id(device_id: str) -> bool:
     """
     Validate that a device ID follows the expected format.
+    
+    Accepts both device IDs (device-*) and rack IDs (RACK-*, rack-*, rack-01-primary) for fleet operations.
     
     Args:
         device_id: The device ID to validate
@@ -56,4 +63,20 @@ def validate_device_id(device_id: str) -> bool:
     Returns:
         True if valid, False otherwise
     """
-    return bool(device_id) and (device_id.startswith("device-") or len(device_id) >= 8)
+    if not device_id:
+        return False
+    
+    # Accept device IDs (device-*)
+    if device_id.startswith("device-"):
+        return len(device_id) >= 10  # device- + at least 8 chars
+    
+    # Accept rack IDs (RACK-*, rack-*, rack-01-primary)
+    if device_id.startswith("RACK-") or device_id.startswith("rack-"):
+        return len(device_id) >= 8
+    
+    # Accept special fleet IDs
+    if device_id == "rack-01-primary":
+        return True
+    
+    # Accept other reasonable IDs (fallback)
+    return len(device_id) >= 8

@@ -27,24 +27,51 @@ if (token) {
   reasonApi.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 }
 
-// Device ID for multi-device support - matching backend generation
+// Device ID for multi-device support - cross-environment consistency
 const DEVICE_ID_KEY = "rackpulse_device_id";
-const getDeviceId = () => {
-  // Clear old device ID to force consistency
-  const oldDeviceId = localStorage.getItem(DEVICE_ID_KEY);
-  if (oldDeviceId && oldDeviceId !== "rack-01-primary") {
-    localStorage.removeItem(DEVICE_ID_KEY);
+
+/**
+ * Generate a consistent device ID based on browser/device characteristics.
+ * This ensures the same device gets the same ID across different environments
+ * (localhost vs deployed) while different devices get different IDs.
+ */
+const generateConsistentDeviceId = () => {
+  // Use browser/device characteristics for consistent fingerprinting
+  const characteristics = [
+    navigator.userAgent,
+    navigator.language,
+    screen.width + 'x' + screen.height,
+    new Intl.DateTimeFormat().resolvedOptions().timeZone,
+    navigator.hardwareConcurrency || 'unknown',
+    navigator.deviceMemory || 'unknown'
+  ];
+  
+  // Create a hash from these characteristics
+  const fingerprint = characteristics.join('|');
+  let hash = 0;
+  for (let i = 0; i < fingerprint.length; i++) {
+    const char = fingerprint.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
   }
   
+  // Convert to positive hex and format as device ID
+  const positiveHash = Math.abs(hash).toString(16).padStart(8, '0');
+  return `device-${positiveHash}`;
+};
+
+const getDeviceId = () => {
   let deviceId = localStorage.getItem(DEVICE_ID_KEY);
   if (!deviceId) {
-    // Use a consistent device ID for development/testing
-    // In production, this should match the backend's device ID generation
-    deviceId = "rack-01-primary"; // Consistent with backend default
+    // Generate a consistent device ID based on browser characteristics
+    deviceId = generateConsistentDeviceId();
     localStorage.setItem(DEVICE_ID_KEY, deviceId);
   }
   return deviceId;
 };
+
+// Export getDeviceId for use in components
+export { getDeviceId };
 
 // Add device ID to all requests
 const deviceId = getDeviceId();
