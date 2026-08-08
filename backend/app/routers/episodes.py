@@ -33,13 +33,13 @@ def get_episodes_replay(
     db: Session = Depends(get_db),
 ):
     """
-    Return Episode rows for the current device optionally filtered by rack, success flag, minimum reward, or action taken.
+    Return Episode rows (shared across all devices) optionally filtered by rack, success flag, minimum reward, or action taken.
     By default only returns resolved episodes (outcome_recorded_at IS NOT NULL).
     Set include_unresolved=True to get all episodes including unresolved ones.
     Results are ordered by created_at DESC (most recent first).
     """
-    device_id = get_or_create_device_id(request.headers.get("X-Device-ID") if request else None)
-    q = db.query(Episode).filter(Episode.device_id == device_id)
+    # Query all episodes without device_id filtering for cross-device sharing
+    q = db.query(Episode)
     
     # Only filter for resolved episodes if not explicitly including unresolved
     if not include_unresolved:
@@ -56,7 +56,7 @@ def get_episodes_replay(
 
     episodes = q.order_by(Episode.created_at.desc()).limit(limit).all()
     
-    logger.info(f"Returning {len(episodes)} episodes for device {device_id} (include_unresolved={include_unresolved})")
+    logger.info(f"Returning {len(episodes)} episodes (shared across all devices, include_unresolved={include_unresolved})")
 
     return [
         {

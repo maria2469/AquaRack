@@ -727,20 +727,17 @@ def get_memory_history(
     request: Request = None,
     db: Session = Depends(get_db),
 ):
-    """GET /api/memory/history - Retrieve recent persistent memories for the current device."""
+    """GET /api/memory/history - Retrieve recent persistent memories (shared across all devices)."""
     try:
-        # Get device_id from request
-        device_id = get_or_create_device_id(request.headers.get("X-Device-ID") if request else None)
-        
         # Log the query parameters
-        logger.info(f"Fetching memory history with limit={limit}, device_id={device_id}")
+        logger.info(f"Fetching memory history with limit={limit} (shared across all devices)")
         
-        # Use a simple query without ordering first to see if data exists
-        all_rows = db.query(models.MemoryEmbedding).filter(models.MemoryEmbedding.device_id == device_id).all()
-        logger.info(f"Total MemoryEmbedding records for device {device_id}: {len(all_rows)}")
+        # Query all memories without device_id filtering for cross-device sharing
+        all_rows = db.query(models.MemoryEmbedding).order_by(models.MemoryEmbedding.created_at.desc()).limit(limit).all()
+        logger.info(f"Total MemoryEmbedding records (all devices): {len(all_rows)}")
         
-        # Then apply ordering and limit
-        rows = db.query(models.MemoryEmbedding).filter(models.MemoryEmbedding.device_id == device_id).order_by(models.MemoryEmbedding.created_at.desc()).limit(limit).all()
+        # Apply ordering and limit
+        rows = db.query(models.MemoryEmbedding).order_by(models.MemoryEmbedding.created_at.desc()).limit(limit).all()
         logger.info(f"Retrieved {len(rows)} memory records from database (limit={limit})")
         
         result = [
@@ -766,48 +763,39 @@ def get_comprehensive_memory_stats(
     request: Request = None,
     db: Session = Depends(get_db),
 ):
-    """GET /api/memory/comprehensive - Get comprehensive memory and episode statistics for the current device."""
+    """GET /api/memory/comprehensive - Get comprehensive memory and episode statistics (shared across all devices)."""
     try:
-        # Get device_id from request
-        device_id = get_or_create_device_id(request.headers.get("X-Device-ID") if request else None)
-        
-        # Memory statistics
-        total_memories = db.query(func.count(models.MemoryEmbedding.id)).filter(models.MemoryEmbedding.device_id == device_id).scalar()
+        # Memory statistics (shared across all devices)
+        total_memories = db.query(func.count(models.MemoryEmbedding.id)).scalar()
         recommendation_memories = db.query(func.count(models.MemoryEmbedding.id)).filter(
-            models.MemoryEmbedding.device_id == device_id,
             models.MemoryEmbedding.memory_type == "recommendation"
         ).scalar()
         incident_memories = db.query(func.count(models.MemoryEmbedding.id)).filter(
-            models.MemoryEmbedding.device_id == device_id,
             models.MemoryEmbedding.memory_type == "incident"
         ).scalar()
-        
-        # Episode statistics
-        total_episodes = db.query(func.count(Episode.episode_id)).filter(Episode.device_id == device_id).scalar()
-        resolved_episodes = db.query(func.count(Episode.episode_id)).filter(
-            Episode.device_id == device_id,
-            Episode.outcome_recorded_at.isnot(None)
-        ).scalar()
-        successful_episodes = db.query(func.count(Episode.episode_id)).filter(
-            Episode.device_id == device_id,
-            Episode.success == True
-        ).scalar()
-        failed_episodes = db.query(func.count(Episode.episode_id)).filter(
-            Episode.device_id == device_id,
-            Episode.success == False
-        ).scalar()
-        unresolved_episodes = total_episodes - resolved_episodes
         
         # Calculate hot memories (last 24 hours)
         from datetime import datetime, timedelta
         one_day_ago = datetime.utcnow() - timedelta(days=1)
         hot_memories = db.query(func.count(models.MemoryEmbedding.id)).filter(
-            models.MemoryEmbedding.device_id == device_id,
             models.MemoryEmbedding.created_at >= one_day_ago
         ).scalar()
         
-        # Calculate average reward
-        avg_reward_result = db.query(func.avg(Episode.reward)).filter(Episode.device_id == device_id).scalar()
+        # Episode statistics (shared across all devices)
+        total_episodes = db.query(func.count(Episode.episode_id)).scalar()
+        resolved_episodes = db.query(func.count(Episode.episode_id)).filter(
+            Episode.outcome_recorded_at.isnot(None)
+        ).scalar()
+        successful_episodes = db.query(func.count(Episode.episode_id)).filter(
+            Episode.success == True
+        ).scalar()
+        failed_episodes = db.query(func.count(Episode.episode_id)).filter(
+            Episode.success == False
+        ).scalar()
+        unresolved_episodes = total_episodes - resolved_episodes
+        
+        # Calculate average reward (shared across all devices)
+        avg_reward_result = db.query(func.avg(Episode.reward)).scalar()
         avg_reward = float(avg_reward_result) if avg_reward_result else 0.0
         
         return {
@@ -825,7 +813,6 @@ def get_comprehensive_memory_stats(
                 "failed_episodes": failed_episodes,
                 "avg_reward": avg_reward,
             },
-            "device_id": device_id,
             "last_updated": datetime.utcnow().isoformat()
         }
     except Exception as e:
