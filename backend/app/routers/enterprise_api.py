@@ -271,13 +271,14 @@ def generate_agent_reasoning(
         f"POST /api/reason - telemetry_id={telemetry_id} use_memory={use_memory} device_id={device_id}"
     )
     
+    logger.info(f"🧠 REASONING START: device_id={device_id}, use_memory={use_memory}")
+    
     pipeline = run_full_pipeline(db, telemetry_id)
     reading = pipeline["reading"]
-    twin_state = pipeline["twin_state"]
+    twin_state = pipeline["twin_state"]  # This is now a dict with device_id
     water_out = pipeline["water_out"]
     
-    # The pipeline already handles device_id correctly through the telemetry system
-    # No need to override device_id on twin_state (it doesn't have that field)
+    logger.info(f"🧠 PIPELINE COMPLETE: twin_state_is_dict={isinstance(twin_state, dict)}, has_device_id={'device_id' in twin_state if isinstance(twin_state, dict) else 'N/A'}")
 
     open_incidents = db.query(models.Incident).filter(models.Incident.resolved.is_(False)).count()
 

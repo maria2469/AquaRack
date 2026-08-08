@@ -32,6 +32,10 @@ def run_full_pipeline(db: Session, telemetry_id: str = None) -> dict:
     )
     twin = DigitalTwinEngine(profile, mode="laptop")
     twin_state = twin.simulate(reading)
+    
+    # Convert to dict and add device_id for memory storage
+    twin_dict = twin_state.model_dump()
+    twin_dict["device_id"] = reading.device_id
 
     # Prefer the actual weather already attached to this telemetry reading
     # (set at collection time); otherwise fetch current weather live. Only
@@ -49,7 +53,7 @@ def run_full_pipeline(db: Session, telemetry_id: str = None) -> dict:
         humidity=humidity,
         pue_thermal_overhead=settings.PUE_THERMAL_OVERHEAD,
     )
-    water_out = water_model.compute_water_usage(twin_state.thermal_load_kw)
+    water_out = water_model.compute_water_usage(twin_dict["thermal_load_kw"])
 
     wm_row = models.WaterModelResult(
         telemetry_id=reading.telemetry_id,
@@ -57,21 +61,21 @@ def run_full_pipeline(db: Session, telemetry_id: str = None) -> dict:
         cooling_load_kw=water_out["cooling_load_kw"],
         water_l_per_hr=water_out["water_l_per_hr"],
         pue=water_out["pue"],
-        utilisation_pct=twin_state.utilisation_pct,
-        thermal_load_kw=twin_state.thermal_load_kw,
-        power_draw_kw=twin_state.power_draw_kw,
+        utilisation_pct=twin_dict["utilisation_pct"],
+        thermal_load_kw=twin_dict["thermal_load_kw"],
+        power_draw_kw=twin_dict["power_draw_kw"],
     )
     db.add(wm_row)
 
     # Threshold-based incident flagging (Phase 1, per ER diagram "incidents" notes)
-    if twin_state.utilisation_pct >= 85:
+    if twin_dict["utilisation_pct"] >= 85:
         from app.memory_engine.summarise import summarise_incident
         from app.mcp.client import mcp_client
 
         incident = models.Incident(
             telemetry_id=reading.telemetry_id,
             severity="HIGH",
-            description=f"Utilisation critical at {twin_state.utilisation_pct:.1f}%",
+            description=f"Utilisation critical at {twin_dict['utilisation_pct']:.1f}%",
             root_cause="High GPU utilisation caused elevated thermal load",
         )
         db.add(incident)
@@ -89,7 +93,7 @@ def run_full_pipeline(db: Session, telemetry_id: str = None) -> dict:
 
     db.commit()
     db.refresh(wm_row)
-    return {"reading": reading, "twin_state": twin_state, "water_out": water_out, "wm_row": wm_row}
+    return {"reading": reading, "twin_state": twin_dict, "water_out": water_out, "wm_row": wm_row}
 
 
 @router.post("/simulate")

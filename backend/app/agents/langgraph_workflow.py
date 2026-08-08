@@ -54,7 +54,7 @@ def monitor_node(state: AgentState) -> AgentState:
     and retrieves similar historical episodes for RL priors (Task 7)."""
     run_id = state["run_id"]
     db = state["db"]
-    twin = state["twin_dict"]
+    twin = state["twin_dict"]  # Changed from twin to twin_dict since we return dict now
     water = state["water_out"]
 
     use_memory = state.get("use_memory", True)
@@ -520,11 +520,14 @@ def action_node(state: AgentState) -> AgentState:
     # Persist agent memory via MCP tool (memory-enabled runs only)
     stored_mem = {}
     if db and state.get("use_memory", True):
+        logger.info(f"🧠 MEMORY STORAGE ATTEMPT: use_memory={state.get('use_memory', True)}, db_exists={db is not None}")
         thinking_steps.append(f"🤖 STEP 6: Storing decision to agent memory")
         try:
             summary = f"Action: {opt['recommendation']} | Expected Saving: {opt['expected_water_saving']}L/hr | Confidence: {final_conf}"
             device_id = twin.get("device_id", "rack-01-primary")  # Get device_id from twin_dict
+            logger.info(f"🧠 MEMORY STORAGE: Calling store_agent_memory with device_id={device_id}")
             stored_mem = store_agent_memory(db, memory_type="recommendation", source_id=run_id, summary=summary, device_id=device_id)
+            logger.info(f"✅ MEMORY STORAGE SUCCESS: {stored_mem}")
             thinking_steps.append(f"   - Memory ID: {stored_mem.get('id', 'N/A')}")
             thinking_steps.append(f"   - Memory Type: recommendation")
             rl.log_step(run_id, "ActionAgent", "tool_call", {
@@ -533,6 +536,7 @@ def action_node(state: AgentState) -> AgentState:
                 "stored_memory": stored_mem
             })
         except Exception as exc:
+            logger.error(f"❌ MEMORY STORAGE FAILED: {exc}")
             logger.warning("ActionAgent memory persistence failed: %s", exc)
             thinking_steps.append(f"   - Memory Storage Failed: {exc}")
             rl.log_step(run_id, "ActionAgent", "error", {
@@ -543,6 +547,9 @@ def action_node(state: AgentState) -> AgentState:
                 db.rollback()
             except Exception:
                 pass
+    else:
+        logger.warning(f"⚠️ MEMORY STORAGE SKIPPED: use_memory={state.get('use_memory', True)}, db_exists={db is not None}")
+        thinking_steps.append(f"   - Memory Storage Skipped: use_memory={state.get('use_memory', True)}")
 
     thinking_steps.append(f"🤖 STEP 7: Final action result")
     thinking_steps.append(f"   - Guardrail Passed: {passed}")
@@ -756,7 +763,12 @@ class LangGraphWorkflowRunner:
         use_memory: bool = True,
     ) -> Dict[str, Any]:
         run_id = rl.new_run_id()
-        twin_dict = twin_state_obj.model_dump()
+        
+        # Handle both dict and object inputs
+        if isinstance(twin_state_obj, dict):
+            twin_dict = twin_state_obj
+        else:
+            twin_dict = twin_state_obj.model_dump()
 
         initial_state: AgentState = {
             "run_id": run_id,

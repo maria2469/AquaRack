@@ -72,6 +72,7 @@ class TwinState(BaseModel):
     thermal_load_kw: float
     power_draw_kw: float
     mode: ModeEnum = ModeEnum.laptop
+    device_id: Optional[str] = "rack-01-primary"  # Add device_id for memory storage
 
 
 # --- Simulate / Recommend requests ---
