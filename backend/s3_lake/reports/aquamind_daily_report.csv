@@ -1,2 +1,0 @@
-timestamp,device_id,cpu_pct,gpu_pct,ram_pct,cooling_load_kw,wue_factor,water_l_per_hr,recommendation,confidence
-2026-08-06T22:51:47.121242,test-laptop,98.0,95.0,90.0,4.3452,0.672,1.3682,Increase liquid cooling flow by 10% to prevent thermal overhead spike.,0.55

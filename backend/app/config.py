@@ -109,7 +109,7 @@ class Settings(BaseSettings):
     # ==========================================================
     DEVICE_ID: str = os.getenv("AQUARACK_DEVICE_ID", "rack-01-primary")
     POLL_INTERVAL_SECONDS: int = 30  # Increased to 30 seconds to reduce API load and prevent timeouts
-    COLLECTOR_ENABLED: bool = False  # Temporarily disabled to ensure stable backend
+    COLLECTOR_ENABLED: bool = True  # Enabled for production telemetry collection
 
     # ==========================================================
     # REPORTS
@@ -140,8 +140,5 @@ logger.info(
 )
 
 # ==========================================================
-# CREATE REQUIRED DIRECTORIES
+# LOG CONFIGURATION
 # ==========================================================
-
-os.makedirs(settings.REPORTS_DIR, exist_ok=True)
-os.makedirs(settings.S3_LOCAL_FALLBACK_DIR, exist_ok=True)

@@ -30,14 +30,14 @@ ENV/
 *.sqlite3
 collector_queue.db
 aquamind_phase1.db
+s3_lake/
 
 # Logs & Generated Reports
 *.log
 aquamind.log
 aquamind_reasoning.log
-reports/*.pdf
-reports/*.csv
-!reports/.gitkeep
+reports/
+backend/reports/
 
 # Node.js & Frontend
 node_modules/
@@ -46,6 +46,20 @@ dist/
 frontend/dist/
 build/
 .npm/
+frontend/.env
+frontend/.env.local
+frontend/.env.production
+
+# Frontend build outputs
+frontend/build/
+frontend/dist/
+
+# Frontend cache
+frontend/.cache/
+frontend/.parcel-cache/
+
+# Frontend test coverage
+frontend/coverage/
 
 # OS & Editor Files
 .DS_Store
@@ -54,3 +68,13 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Tests
+tests/
+backend/tests/
+frontend/test-*.html
+backend/test_*.py
+
+# Build artifacts
+*.zip
+backend.zip

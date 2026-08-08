@@ -59,6 +59,8 @@ def _get_cw_client():
     try:
         import boto3
 
+        # Use boto3's default credential chain (same as AWS CLI)
+        # This will automatically check: env vars, credential file, config file, IAM role
         _cw_client = boto3.client("cloudwatch", region_name=settings.AWS_REGION)
         return _cw_client
     except Exception as exc:  # noqa: BLE001

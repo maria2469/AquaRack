@@ -36,6 +36,8 @@ def _get_s3_client():
     try:
         import boto3
 
+        # Use boto3's default credential chain (same as AWS CLI)
+        # This will automatically check: env vars, credential file, config file, IAM role
         _s3_client = boto3.client("s3", region_name=settings.AWS_REGION)
         return _s3_client
     except Exception as e:  # noqa: BLE001

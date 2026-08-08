@@ -1,8 +1,0 @@
-{
-  "device_id": "test-laptop",
-  "timestamp": "2026-08-06T13:46:41.316282",
-  "cpu_pct": 93.0,
-  "gpu_pct": null,
-  "ram_pct": 88.0,
-  "snapshot_generated_at": "2026-08-06T13:46:44.985428"
-}

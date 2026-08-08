@@ -8,6 +8,7 @@ a fleet-wide Phase 2 view can both be shown side by side on the combined
 dashboard.
 
 Enhanced for 100-rack fleet with agent reasoning across all racks.
+Integrated with S3 and CloudWatch for production deployment.
 """
 import json
 import time
@@ -23,6 +24,8 @@ from app.database import get_db
 from app.agents.fleet_orchestrator import fleet_orchestrator
 from app.config import settings
 from app.repositories.rack_reasoning import RackReasoningRepository
+from app.lib.s3_client import upload_telemetry_snapshot_to_s3
+from app.observability.cloudwatch_metrics import publish_telemetry_metrics
 
 router = APIRouter(prefix="/api/v1", tags=["fleet-dashboard"])
 
@@ -305,6 +308,37 @@ def run_single_rack_reasoning(
                     cooling_efficiency=rack_profile.get("cooling_efficiency") if rack_profile else None,
                     hardware_age=rack_profile.get("hardware_age") if rack_profile else None
                 )
+                
+                # Automatic AWS integration for production
+                try:
+                    # Upload fleet result snapshot to S3
+                    fleet_snapshot = {
+                        "rack_id": rack_id,
+                        "device_id": rack_result.get("device_id"),
+                        "timestamp": time.time(),
+                        "success": rack_result.get("success"),
+                        "recommendation": rack_result.get("result", {}).get("recommendation"),
+                        "confidence": rack_result.get("result", {}).get("confidence"),
+                        "expected_water_saving": rack_result.get("result", {}).get("expected_water_saving")
+                    }
+                    s3_uri = upload_telemetry_snapshot_to_s3(fleet_snapshot)
+                    print(f"Fleet snapshot uploaded to S3: {s3_uri}")
+                    
+                    # Publish metrics to CloudWatch
+                    publish_telemetry_metrics(
+                        gpu_pct=rack_result.get("result", {}).get("current_gpu"),
+                        cooling_load_kw=rack_result.get("result", {}).get("cooling_load_kw"),
+                        wue_factor=rack_result.get("result", {}).get("wue_factor"),
+                        water_l_per_hr=rack_result.get("result", {}).get("water_l_per_hr"),
+                        agent_confidence=rack_result.get("result", {}).get("confidence"),
+                        water_saved_pct=rack_result.get("result", {}).get("expected_water_saving"),
+                        device_id=rack_result.get("device_id")
+                    )
+                    print(f"Metrics published to CloudWatch for rack {rack_id}")
+                except Exception as aws_error:
+                    print(f"AWS integration failed (non-critical): {aws_error}")
+                    # Continue even if AWS integration fails
+                    
             except Exception as e:
                 # Log error but don't fail the request
                 print(f"Error saving rack result to database: {e}")
@@ -340,12 +374,15 @@ def get_fleet_status(db: Session = Depends(get_db)):
 
 @router.get("/fleet/saved-results")
 def get_saved_rack_results(db: Session = Depends(get_db)):
-    """Get all saved rack reasoning results from database."""
+    """Get all saved rack reasoning results from database with AWS integration."""
     try:
         results = RackReasoningRepository.get_all_rack_results(db)
         
         # Convert to frontend format
         rack_results = []
+        total_water_saving = 0.0
+        avg_confidence = 0.0
+        
         for result in results:
             rack_result = {
                 "rack_id": result.rack_id,
@@ -362,9 +399,44 @@ def get_saved_rack_results(db: Session = Depends(get_db)):
                 "reasoning_time_ms": result.reasoning_time_ms
             }
             rack_results.append(rack_result)
+            
+            # Calculate fleet metrics
+            if result.success and result.api_response:
+                water_saving = result.api_response.get("expected_water_saving", 0)
+                confidence = result.api_response.get("confidence", 0)
+                total_water_saving += water_saving
+                avg_confidence += confidence
         
         # Get fleet summary
         summary = RackReasoningRepository.get_fleet_summary(db)
+        
+        # Automatic AWS integration for fleet summary
+        try:
+            # Upload fleet summary to S3
+            fleet_summary = {
+                "timestamp": time.time(),
+                "total_racks": len(rack_results),
+                "successful_racks": summary.get("successful_racks", 0),
+                "total_water_saving": total_water_saving,
+                "avg_confidence": avg_confidence / len(rack_results) if rack_results else 0,
+                "rack_results": rack_results
+            }
+            s3_uri = upload_telemetry_snapshot_to_s3(fleet_summary)
+            print(f"Fleet summary uploaded to S3: {s3_uri}")
+            
+            # Publish fleet metrics to CloudWatch
+            publish_telemetry_metrics(
+                gpu_pct=summary.get("avg_gpu", 0),
+                cooling_load_kw=summary.get("avg_cooling_load", 0),
+                wue_factor=summary.get("avg_wue", 0),
+                water_l_per_hr=summary.get("avg_water_usage", 0),
+                agent_confidence=avg_confidence / len(rack_results) if rack_results else 0,
+                water_saved_pct=total_water_saving,
+                device_id="fleet-summary"
+            )
+            print(f"Fleet metrics published to CloudWatch")
+        except Exception as aws_error:
+            print(f"AWS fleet integration failed (non-critical): {aws_error}")
         
         return {
             "rack_results": rack_results,

@@ -56,7 +56,6 @@ from app.routers import (
     recommend,
     memory,
     dashboard,
-    reports,
     agent_trace,
     enterprise_api,
     actuation,
@@ -191,7 +190,6 @@ app.include_router(simulate.router)
 app.include_router(recommend.router)
 app.include_router(memory.router)
 app.include_router(dashboard.router)
-app.include_router(reports.router)
 app.include_router(agent_trace.router)
 app.include_router(episodes.router)
 app.include_router(actuation.router)
