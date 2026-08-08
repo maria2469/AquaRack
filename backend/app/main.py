@@ -155,6 +155,11 @@ async def optional_bearer_auth(request: Request, call_next):
                 },
             )
     return await call_next(request)
+    """Log all incoming API requests for debugging."""
+    logger.info(f"🔵 API Request: {request.method} {request.url.path} from {request.client.host if request.client else 'unknown'}")
+    response = await call_next(request)
+    logger.info(f"🟢 API Response: {response.status_code} {request.method} {request.url.path}")
+    return response
 
 
 @app.exception_handler(StarletteHTTPException)

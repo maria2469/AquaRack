@@ -122,6 +122,9 @@ def store_memory_embedding(
 ) -> "models.MemoryEmbedding":
     """Store memory embedding with proper error handling and device_id support."""
     try:
+        logger.info(f"🧠 MEMORY STORAGE START: type='{memory_type}', source_id='{source_id}', device_id='{device_id}'")
+        logger.info(f"🧠 MEMORY SUMMARY: {summary[:100]}..." if len(summary) > 100 else f"🧠 MEMORY SUMMARY: {summary}")
+        
         # Validate inputs
         if not summary or not summary.strip():
             raise ValueError("Summary cannot be empty")
@@ -131,6 +134,7 @@ def store_memory_embedding(
             raise ValueError("Memory type cannot be empty")
             
         vector, model_name = embed_text(summary)
+        logger.info(f"🧠 EMBEDDING GENERATED: model='{model_name}', vector_length={len(vector) if vector else 0}")
         
         if not vector or len(vector) == 0:
             raise ValueError("Failed to generate embedding vector")
@@ -145,33 +149,37 @@ def store_memory_embedding(
         db.add(row)
         db.commit()
         db.refresh(row)
+        logger.info(f"✅ MEMORY SAVED TO DB: id='{row.id}', memory_type='{row.memory_type}', device_id='{row.device_id}'")
 
         from app.memory_engine.vector_index import sync_native_vector
         try:
             sync_native_vector(db, row_id=row.id, vector=vector)
+            logger.info(f"✅ VECTOR SYNCED: row_id='{row.id}'")
         except Exception:
             # already logged with full context inside sync_native_vector;
             # row still exists with a valid embedding column, just not yet
             # mirrored into vector_native for native search
+            logger.warning(f"⚠️ VECTOR SYNC FAILED (non-critical): row_id='{row.id}'")
             pass
             
         return row
         
     except Exception as e:
         db.rollback()
-        logger.error(f"Failed to store memory embedding: {e}")
+        logger.error(f"❌ MEMORY STORAGE FAILED: {e}")
         raise
-
-    return row
 
 
 def search_memories(db: Session, query_text: str, k: int = 5) -> List[Dict[str, Any]]:
     """Backward compatibility helper for /api/v1/memory/search."""
+    logger.info(f"🔍 MEMORY SEARCH: query='{query_text}', k={k}")
     res = search_memory_embeddings(db, query_text=query_text, memory_type="recommendation", k=k)
     matches = res.get("matches", [])
     if not matches:
+        logger.info(f"🔍 NO RECOMMENDATION MEMORIES FOUND, SEARCHING INCIDENTS")
         res_inc = search_memory_embeddings(db, query_text=query_text, memory_type="incident", k=k)
         matches = res_inc.get("matches", [])
+    logger.info(f"🔍 MEMORY SEARCH RESULTS: found {len(matches)} matches")
     results = []
     for m in matches:
         created = m.get("created_at")
@@ -191,4 +199,5 @@ def search_memories(db: Session, query_text: str, k: int = 5) -> List[Dict[str, 
             "similarity": m.get("similarity") or 0.9,
             "created_at": created,
         })
+    logger.info(f"🔍 MEMORY SEARCH COMPLETE: returning {len(results)} results")
     return results

@@ -9,6 +9,28 @@ import axios from "axios";
  */
 const baseURL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
 
+// Request/Response Logging Interceptors
+const logRequest = (config) => {
+  console.log(`🔵 API Request: ${config.method?.toUpperCase()} ${config.url}`, config.data || '');
+  return config;
+};
+
+const logResponse = (response) => {
+  console.log(`🟢 API Response: ${response.status} ${response.config.url}`, response.data);
+  return response;
+};
+
+const logError = (error) => {
+  console.error(`🔴 API Error: ${error.config?.method?.toUpperCase()} ${error.config?.url}`, error.message);
+  return Promise.reject(error);
+};
+
+api.interceptors.request.use(logRequest, logError);
+api.interceptors.response.use(logResponse, logError);
+
+reasonApi.interceptors.request.use(logRequest, logError);
+reasonApi.interceptors.response.use(logResponse, logError);
+
 export const api = axios.create({
   baseURL,
   timeout: 30000, // Increased timeout to 30 seconds to avoid timeouts on slow requests

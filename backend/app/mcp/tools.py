@@ -198,8 +198,10 @@ def store_agent_memory(db: Session, memory_type: str, source_id: str, summary: s
     summaries produce near-identical embeddings, which is why every query used to
     match everything.
     """
-    logger.info("MCP Tool Executed: store_agent_memory(type='%s', source_id='%s')", memory_type, source_id)
+    logger.info("🧠 MEMORY STORAGE: Storing memory - type='%s', source_id='%s', device_id='%s'", memory_type, source_id, device_id)
+    logger.info("🧠 MEMORY STORAGE: Summary preview: %s...", summary[:100] if len(summary) > 100 else summary)
     emb = memory_store.store_memory_embedding(db, memory_type=memory_type, source_id=source_id, summary=summary, device_id=device_id)
+    logger.info("✅ MEMORY STORAGE: Success - memory_id='%s', memory_type='%s'", emb.id, emb.memory_type)
     return {
         "status": "success",
         "id": emb.id,
