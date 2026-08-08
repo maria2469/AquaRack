@@ -116,6 +116,7 @@ class Settings(BaseSettings):
     DEVICE_ID: str = os.getenv("AQUARACK_DEVICE_ID", "rack-01-primary")
     POLL_INTERVAL_SECONDS: int = 30  # Increased to 30 seconds to reduce API load and prevent timeouts
     COLLECTOR_ENABLED: bool = True  # Enabled for production telemetry collection
+    COLLECTOR_API_URL: str = os.getenv("COLLECTOR_API_URL", "http://127.0.0.1:8000")  # Default to main FastAPI port
 
     # ==========================================================
     # REPORTS

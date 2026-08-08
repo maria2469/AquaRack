@@ -26,8 +26,8 @@ logger = logging.getLogger("aquamind.collector")
 
 
 def run(api_base_url: str = None, stop_event=None):
-    # Use the correct port (8002) instead of config default
-    api_base_url = api_base_url or f"http://127.0.0.1:8002"
+    # Use the configured API URL or default to the main FastAPI port
+    api_base_url = api_base_url or settings.COLLECTOR_API_URL
     queue = CockroachDBQueue(engine)
     
     # Use a consistent device ID for this machine
