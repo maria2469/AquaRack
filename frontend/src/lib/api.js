@@ -154,9 +154,9 @@ export const postReason = (telemetry_id, use_memory = true) =>
 export const postCompare = (telemetry_id) =>
   reasonApi.post("/api/compare", { telemetry_id }).then((r) => r.data);
 
-/** POST /api/benchmark - Run memory vs no-memory benchmark comparison */
+/** POST /api/compare - Run memory vs no-memory benchmark comparison (alias for consistency) */
 export const runCompareBenchmark = (telemetry_id) =>
-  reasonApi.post("/api/benchmark", { telemetry_id }).then((r) => r.data);
+  reasonApi.post("/api/compare", { telemetry_id }).then((r) => r.data);
 
 function formatCompareSide(reasonRes, useMemory) {
   return {
