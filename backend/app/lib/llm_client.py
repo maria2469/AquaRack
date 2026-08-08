@@ -1,5 +1,5 @@
 """
-LLM Client Manager for RackPulse.
+LLM Client Manager for AquaRack.
 Optimized for local Ollama (Qwen) calls with fallback to Groq and connection pooling.
 """
 

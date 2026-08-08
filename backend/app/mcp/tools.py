@@ -1,5 +1,5 @@
 """
-CockroachDB Managed MCP Tools implementation for RackPulse.
+CockroachDB Managed MCP Tools implementation for AquaRack.
 
 Provides structured MCP memory retrieval and persistence tools used by Ollama/Groq via llm_client and Agent Orchestrators.
 

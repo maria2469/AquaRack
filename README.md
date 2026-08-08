@@ -12,8 +12,8 @@
 
 ## 🌍 Live Deployments
 
-- **Frontend (Vercel)**: [https://aqua-rack.vercel.app](https://aqua-rack.vercel.app)
-- **Backend API (Render)**: [https://aquarack.onrender.com](https://aquarack.onrender.com)
+- **Frontend (Vercel)**: [https://aquarack-orpin.vercel.app](https://aquarack-orpin.vercel.app)
+- **Backend API (Render)**: [https://aquarack-h3wz.onrender.com](https://aquarack-h3wz.onrender.com)
 
 ---
 
@@ -208,7 +208,7 @@ Each of the 100 racks maintains its own:
 
 ### 1. Database Setup
 ```ini
-DATABASE_URL="cockroachdb+psycopg://user:password@host:26257/Rackpulse?sslmode=verify-full"
+DATABASE_URL="cockroachdb+psycopg://user:password@host:26257/AquaRack?sslmode=verify-full"
 ```
 
 ### 2. Backend Setup

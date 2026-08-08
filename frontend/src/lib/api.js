@@ -1,7 +1,7 @@
 import axios from "axios";
 
 /**
- * AquaMind AI API client.
+ * AquaRack API client.
  *
  * Talks to the FastAPI monolith (SDD Section 10 — /api/v1/*).
  * Dev: vite.config.js proxies /api -> http://127.0.0.1:8000

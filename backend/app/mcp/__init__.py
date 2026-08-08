@@ -1,3 +1,3 @@
 """
-CockroachDB Managed MCP Server package for RackPulse.
+CockroachDB Managed MCP Server package for AquaRack.
 """

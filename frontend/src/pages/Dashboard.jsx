@@ -161,7 +161,7 @@ export default function Dashboard() {
             <div>
               <span className="text-xs uppercase tracking-[0.18em] text-flow font-mono">Agentic Digital Twin</span>
               <h1 className="font-heading text-3xl md:text-4xl font-semibold text-frost mt-1.5">
-                RackPulse Dashboard
+                AquaRack Dashboard
               </h1>
               <p className="text-sm text-mist mt-1">Multi-Agent Data Center Optimization Platform</p>
             </div>

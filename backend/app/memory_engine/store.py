@@ -1,5 +1,5 @@
 """
-Vector memory storage/search for RackPulse.
+Vector memory storage/search for AquaRack.
 """
 import logging
 import os

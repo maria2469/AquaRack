@@ -7,11 +7,9 @@ export default function Footer() {
       <div className="max-w-7xl mx-auto px-5 md:px-8 py-12 grid grid-cols-1 md:grid-cols-4 gap-10">
         <div className="md:col-span-2">
           <div className="flex items-center gap-2 mb-3">
-            <span className="liquid-glass flex h-9 w-9 items-center justify-center rounded-full">
-              <Droplets size={16} className="text-white" />
-            </span>
+            <img src="/logo.png" alt="AquaRack Logo" className="h-9 w-9" />
             <span className="font-heading text-2xl text-white">
-              AquaMind AI
+              AquaRack
             </span>
           </div>
           <p className="text-sm font-body font-light text-white/70 max-w-sm leading-relaxed">

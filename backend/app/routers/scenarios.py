@@ -1,7 +1,7 @@
 """
 Scenario Management API
 
-Run realistic data center scenarios to demonstrate RackPulse AI capabilities
+Run realistic data center scenarios to demonstrate AquaRack AI capabilities
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -44,7 +44,7 @@ def run_scenario(
     Run a specific data center scenario
     
     This generates realistic telemetry data that demonstrates the problem
-    RackPulse AI is designed to solve.
+    AquaRack AI is designed to solve.
     """
     scenarios = ScenarioGenerator.get_all_scenarios()
     scenario = next((s for s in scenarios if s.name.lower() == scenario_name.lower()), None)
@@ -185,7 +185,7 @@ def run_scenario(
         "duration_minutes": scenario.duration_minutes,
         "expected_problems": scenario.expected_problems,
         "next_steps": [
-            "1. Run RackPulse AI reasoning to address the identified problems",
+            "1. Run AquaRack AI reasoning to address the identified problems",
             "2. Monitor the Memory Dashboard for episode creation",
             "3. Check the Reasoning Trace for AI decision-making process",
             "4. Verify water savings and thermal improvements after AI intervention"

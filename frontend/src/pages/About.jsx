@@ -57,20 +57,20 @@ export default function About() {
             variants={fadeUp} initial="hidden" animate="show"
             className="inline-flex items-center gap-2 rounded-full border border-rack-2 bg-hall-2 px-3.5 py-1.5 text-xs font-mono text-flow-2 mb-6"
           >
-            <GitBranch size={12} /> ABOUT RACKPULSE
+            <GitBranch size={12} /> ABOUT AQUARACK
           </motion.span>
           <motion.h1
             variants={fadeUp} initial="hidden" animate="show" custom={1}
             className="font-heading text-4xl md:text-5xl font-semibold text-frost leading-tight max-w-3xl"
           >
-            RackPulse: Intelligent Data Center
+            AquaRack: Intelligent Data Center
             <span className="text-gradient-coolant"> Optimization Platform</span>
           </motion.h1>
           <motion.p
             variants={fadeUp} initial="hidden" animate="show" custom={2}
             className="mt-6 text-lg text-mist leading-relaxed max-w-2xl"
           >
-            RackPulse combines real-time hardware telemetry, multi-agent AI reasoning, and vector-based memory 
+            AquaRack combines real-time hardware telemetry, multi-agent AI reasoning, and vector-based memory 
             to optimize water usage and thermal efficiency in data center operations through intelligent decision-making.
           </motion.p>
         </div>
@@ -143,7 +143,7 @@ export default function About() {
             <span className="text-xs uppercase tracking-[0.18em] text-flow font-mono flex items-center gap-2">
               <GitBranch size={13} /> Multi-Agent Workflow
             </span>
-            <h2 className="font-heading text-3xl font-semibold text-frost mt-3">How RackPulse thinks</h2>
+            <h2 className="font-heading text-3xl font-semibold text-frost mt-3">How AquaRack thinks</h2>
           </motion.div>
 
           <motion.div 

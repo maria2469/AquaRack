@@ -5,7 +5,7 @@ import * as THREE from "three";
 /**
  * Clean & Optimized 3D Scene for the Problem Page:
  * Represents an Overheating AI Server Rack with an Evaporating Cooling Water Pipe.
- * Directly visualises AquaMind AI's core problem: high thermal compute load causing water depletion & wastage.
+ * Directly visualises AquaRack's core problem: high thermal compute load causing water depletion & wastage.
  */
 
 function OverheatingServerRack({ position = [2.0, -0.2, 0] }) {

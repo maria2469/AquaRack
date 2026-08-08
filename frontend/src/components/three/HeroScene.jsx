@@ -3,7 +3,7 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 
 /**
- * Signature visual for AquaMind AI: a small cluster of server racks with a
+ * Signature visual for AquaRack: a small cluster of server racks with a
  * glowing "coolant core" pulsing between them, threaded by rising particle
  * streams that read simultaneously as rising heat, flowing water, and
  * data telemetry — the three things this product reasons about at once.

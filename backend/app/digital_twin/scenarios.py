@@ -1,7 +1,7 @@
 """
-Realistic Data Center Scenarios for RackPulse Demonstration
+Realistic Data Center Scenarios for AquaRack Demonstration
 
-These scenarios demonstrate real data center problems that RackPulse AI solves:
+These scenarios demonstrate real data center problems that AquaRack AI solves:
 - Thermal hotspots
 - Efficiency optimization
 - Capacity planning

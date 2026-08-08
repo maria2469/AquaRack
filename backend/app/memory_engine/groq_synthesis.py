@@ -1,5 +1,5 @@
 """
-Groq-grounded synthesis step for RackPulse memory retrieval.
+Groq-grounded synthesis step for AquaRack memory retrieval.
 
 NEW FILE -- fixes diagnosis issue #6 (synthesis hallucinating recommendations
 that don't exist in the retrieved memories) and implements the architectural
@@ -34,7 +34,7 @@ _client = Groq(api_key=GROQ_API_KEY_2) if GROQ_API_KEY_2 else None
 
 
 SYSTEM_PROMPT = """You are a grounded retrieval-synthesis assistant for a datacenter \
-cooling/water-savings system called RackPulse.
+cooling/water-savings system called AquaRack.
 
 You will be given a user query and a set of retrieved memory records (incidents \
 and/or recommendations) pulled from a vector database.

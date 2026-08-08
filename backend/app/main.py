@@ -20,9 +20,9 @@ thread, so it's killed automatically when the main process exits; no
 manual shutdown/cleanup is required.
 
 FIX (CORS): the previous allow_origins list only contained the production
-Vercel domain (https://aqua-rack.vercel.app) and localhost. Vercel
+Vercel domain (https://aquarack.vercel.app) and localhost. Vercel
 preview/branch deployments get a per-branch generated URL of the form
-aqua-rack-git-<branch>-<team>.vercel.app, which is what was actually
+aquarack-git-<branch>-<team>.vercel.app, which is what was actually
 calling the API and getting blocked (no Access-Control-Allow-Origin header
 -> every request failed before reaching route handlers). Added
 allow_origin_regex to match any preview deployment for this project, plus
@@ -124,14 +124,14 @@ app = FastAPI(
 )
 
 # FIX: regex covers any Vercel preview/branch deployment for this project
-# (e.g. https://aqua-rack-git-main-marias-projects-76dd7319.vercel.app),
+# (e.g. https://aquarack-git-main-marias-projects-76dd7319.vercel.app),
 # not just the single production URL. Adjust the team/project slug pattern
 # below if your Vercel team or project name ever changes.
-ALLOWED_ORIGIN_REGEX = r"^https://aqua-rack(-[a-zA-Z0-9\-]+)?\.vercel\.app$"
+ALLOWED_ORIGIN_REGEX = r"^https://aquarack(-[a-zA-Z0-9\-]+)?\.vercel\.app$"
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for development
+    allow_origins=["*"],  # Allow all origins for development and production
     allow_credentials=True,  # Enable credentials
     allow_methods=["*"],
     allow_headers=["*"],

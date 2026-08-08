@@ -1,5 +1,5 @@
 """
-Central configuration for AquaRack / RackPulse.
+Central configuration for AquaRack.
 """
 
 import os

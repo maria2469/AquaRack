@@ -2,7 +2,7 @@
 @import "tailwindcss";
 
 @theme {
-  /* ---- AquaMind AI palette ----
+  /* ---- AquaRack palette ----
      Base: near-black data-hall navy. Accent: coolant blue / cyan.
      A muted teal stands in for "water" without tipping into generic SaaS green. */
   --color-abyss: #000000;

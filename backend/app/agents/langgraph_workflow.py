@@ -1,5 +1,5 @@
 """
-LangGraph Multi-Agent State Machine Workflow for RackPulse.
+LangGraph Multi-Agent State Machine Workflow for AquaRack.
 Decomposes operational decision making into distinct agent nodes:
   Monitor -> Predictor -> Optimizer -> Action -> Explainer
 

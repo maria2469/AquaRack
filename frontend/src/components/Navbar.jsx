@@ -22,7 +22,7 @@ export default function Navbar() {
           to="/"
           className="liquid-glass flex h-12 items-center gap-2.5 rounded-full px-4 shrink-0"
         >
-          <Droplets size={18} className="text-white" strokeWidth={2.2} />
+          <img src="/logo.png" alt="AquaRack Logo" className="h-8 w-8" />
           <span className="font-heading font-semibold text-base text-white tracking-tight">AquaRack</span>
         </NavLink>
 

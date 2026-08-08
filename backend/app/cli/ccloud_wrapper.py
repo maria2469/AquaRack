@@ -1,5 +1,5 @@
 """
-CockroachDB Cloud (ccloud) CLI Integration for RackPulse.
+CockroachDB Cloud (ccloud) CLI Integration for AquaRack.
 Enables agents and automated scripts to inspect, monitor, and provision CockroachDB Cloud clusters with JSON output.
 """
 
