@@ -139,18 +139,18 @@ def publish_telemetry_metrics(
         return False
 
 
-def publish_lambda_metrics(
+def publish_job_metrics(
     action: str,
     duration_ms: float,
     success: bool,
     records_processed: int = 0,
 ) -> bool:
     """
-    Publish Lambda EventBridge invocation metrics to CloudWatch.
+    Publish background job execution metrics to CloudWatch.
 
     Parameters
     ----------
-    action            : EventBridge action name (e.g. 'retier_memories')
+    action            : Job action name (e.g. 'retier_memories')
     duration_ms       : Wall-clock execution time in milliseconds
     success           : Whether the action completed without error
     records_processed : Number of records handled (e.g. memories exported)
@@ -174,21 +174,21 @@ def publish_lambda_metrics(
 
     metric_data = [
         {
-            "MetricName": "LambdaDurationMs",
+            "MetricName": "JobDurationMs",
             "Dimensions": dim,
             "Timestamp": ts,
             "Value": float(duration_ms),
             "Unit": "Milliseconds",
         },
         {
-            "MetricName": "LambdaSuccess",
+            "MetricName": "JobSuccess",
             "Dimensions": dim,
             "Timestamp": ts,
             "Value": 1.0 if success else 0.0,
             "Unit": "Count",
         },
         {
-            "MetricName": "LambdaRecordsProcessed",
+            "MetricName": "JobRecordsProcessed",
             "Dimensions": dim,
             "Timestamp": ts,
             "Value": float(records_processed),
@@ -198,8 +198,8 @@ def publish_lambda_metrics(
 
     try:
         client.put_metric_data(Namespace=_NAMESPACE, MetricData=metric_data)
-        logger.debug(f"Published Lambda metrics for action={action}")
+        logger.debug(f"Published job metrics for action={action}")
         return True
     except Exception as exc:  # noqa: BLE001
-        logger.error(f"CloudWatch Lambda metrics failed: {exc}")
+        logger.error(f"CloudWatch job metrics failed: {exc}")
         return False

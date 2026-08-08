@@ -37,9 +37,9 @@ Every GPU cluster running large AI models generates enormous heat. That heat mus
 
 ---
 
-## 🏆 CockroachDB × AWS Hackathon Fulfillment
+## 🏆 CockroachDB × AWS Integration
 
-This project is built explicitly for the CockroachDB × AWS Hackathon, demonstrating **CockroachDB as a production-ready, always-on persistent memory layer for agentic systems.**
+This project demonstrates **CockroachDB as a production-ready, always-on persistent memory layer for agentic systems** with AWS integration for cloud storage and monitoring.
 
 ### 🪳 CockroachDB Tools Used
 1. **CockroachDB Cloud Managed MCP Server**: The LangGraph agent connects directly to CockroachDB clusters using the Managed MCP server (JSON-RPC 2.0). We expose critical memory tools — `retrieve_similar_incidents`, `store_agent_memory`, `ccloud_cluster_health`, and `retrieve_hvac_manual` — so the agent can safely read Standard Operating Procedures and write reasoning outcomes back to the database at every step of its pipeline.
@@ -47,8 +47,7 @@ This project is built explicitly for the CockroachDB × AWS Hackathon, demonstra
 
 ### ☁️ AWS Services Used
 1. **Amazon S3**: Used as a cold-tier data lake. As the CockroachDB memory layer scales, older episodic traces and thermal reports are archived to S3 (`s3://<bucket>/cold/...`).
-2. **AWS Lambda**: Scheduled serverless compute jobs that run asynchronously to pull fleet telemetry, trigger background reasoning loops, and manage memory lifecycle (retier_memories, generate_scheduled_report, cleanup_old_telemetry, telemetry_snapshot, resolve_episode_outcomes).
-3. **Amazon CloudWatch**: Custom metrics publishing for operational monitoring including GPUUtilisation, CoolingLoadKW, WaterSavedPct, AgentConfidence, WUEFactor, WaterLPerHr, and Lambda execution metrics.
+2. **Amazon CloudWatch**: Custom metrics publishing for operational monitoring including GPUUtilisation, CoolingLoadKW, WaterSavedPct, AgentConfidence, WUEFactor, and WaterLPerHr.
 
 ---
 

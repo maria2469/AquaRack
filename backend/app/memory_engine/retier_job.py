@@ -4,11 +4,10 @@ Memory Lifecycle — "Age and Retire" (SDD Phase 2, Section 12.2):
   Retire: cold memories are exported via CDC to S3 and an audit_log entry
           is recorded for the export.
 
-In AWS this is a scheduled Lambda (Section 4.1 / 23, week 9). Locally it's
-a plain function you can invoke on demand, from a cron entry, or wired
-into APScheduler — no extra infra required to see the full lifecycle work
-end-to-end, consistent with Phase 1's zero-mandatory-cloud-dependency
-principle carried into Phase 2.
+In cloud environments this can be configured as a scheduled background job.
+Locally it's a plain function you can invoke on demand, from a cron entry,
+or wired into APScheduler — no extra infra required to see the full lifecycle
+work end-to-end, consistent with zero-mandatory-cloud-dependency principle.
 
 The S3 export uses the real Amazon S3 service when S3_ENABLED=true and
 AWS credentials are configured, with automatic local disk fallback for

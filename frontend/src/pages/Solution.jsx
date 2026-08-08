@@ -55,7 +55,7 @@ const stages = [
 
 const principles = [
   "CockroachDB acts as the true system of record for agentic memory—globally distributed, persistent, and seamlessly integrated through an MCP server.",
-  "AWS Cloud Native: Deployed utilizing Amazon S3 for artifact archiving and AWS Lambda for serverless background jobs.",
+  "AWS Cloud Native: Deployed utilizing Amazon S3 for artifact archiving and Amazon CloudWatch for operational monitoring.",
   "Every recommendation is explainable — it stores exactly which memories it was grounded in.",
   "Model outputs are sanity-checked against published industry WUE benchmarks (0.5–2.0 L/kWh) as an automated test.",
 ];
