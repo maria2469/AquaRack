@@ -54,13 +54,19 @@ This project demonstrates **CockroachDB as a production-ready, always-on persist
 ## 📸 System Architecture
 
 ### Overall System Architecture
-![Overall Architecture](frontend/public/overall%20architecture.png)
+![Overall Architecture](frontend/public/architecture.png)
 
-### Agentic Memory Flow (LangGraph ↔ CockroachDB)
-![Agent Memory Flow](frontend/public/agent_memory_flow.png)
+### Multi-Agent Architecture
+![Multi-Agent Architecture](frontend/public/agent.png)
 
-### End-to-End User & Agent Flow
-![User Flow](frontend/public/user_flow.png)
+### CockroachDB Database Architecture
+![CockroachDB Architecture](frontend/public/coackroach.png)
+
+### AWS Cloud Integration
+![AWS Architecture](frontend/public/aws.png)
+
+### User Flow Architecture
+![User Flow](frontend/public/user.png)
 
 ---
 
