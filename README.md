@@ -14,13 +14,6 @@
 
 ---
 
-## 🌍 Live Deployments
-
-- **Frontend (Vercel)**: [https://aquarack-orpin.vercel.app](https://aquarack-orpin.vercel.app)
-- **Backend API (Render)**: [https://aquarack-h3wz.onrender.com](https://aquarack-h3wz.onrender.com)
-
----
-
 ## 🚨 The Problem We're Solving
 
 **AI data centers are consuming water at a catastrophic and invisible rate.**
