@@ -11,11 +11,14 @@ Enhanced for 100-rack fleet with agent reasoning across all racks.
 Integrated with S3 and CloudWatch for production deployment.
 """
 import json
+import logging
 import time
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional
+
+logger = logging.getLogger("aquarack.fleet_dashboard")
 
   # noqa: F401
 from app import models
@@ -151,23 +154,37 @@ def fleet_summary(db: Session = Depends(get_db)):
 
 @router.post("/fleet/reason")
 def run_fleet_reasoning(
+    request: Request,
     use_memory: bool = Query(True, description="Enable memory retrieval for agents"),
     tick: int = Query(0, description="Simulation tick number"),
     db: Session = Depends(get_db),
 ):
     """
     Run agent reasoning across the entire fleet of 100 racks.
-    
+
     Each rack runs independently with:
     - Its own agent reasoning (Monitor, Predictor, Optimizer, Action, Reflect, Explainer)
     - Separate memory storage (per rack device_id)
     - Individual episodes and recommendations
     - Digital twin telemetry derived from laptop baseline
     """
+    from app.utils.device_id import get_or_create_device_id
+
+    device_id = get_or_create_device_id(request.headers.get("X-Device-ID"))
+    device_lat_str = request.headers.get("X-Device-Latitude")
+    device_lon_str = request.headers.get("X-Device-Longitude")
+
+    device_lat = float(device_lat_str) if device_lat_str else None
+    device_lon = float(device_lon_str) if device_lon_str else None
+
+    logger.info(f"Fleet reasoning for device_id: {device_id}, location: {device_lat}, {device_lon}")
+
     try:
         result = fleet_orchestrator.run_fleet_reasoning(
             use_memory=use_memory,
             tick=tick,
+            device_lat=device_lat,
+            device_lon=device_lon,
         )
         return result
     except Exception as e:
@@ -180,19 +197,33 @@ def run_fleet_reasoning(
 
 @router.get("/fleet/reason/stream")
 def run_fleet_reasoning_stream(
+    request,
     use_memory: bool = Query(True, description="Enable memory retrieval for agents"),
     tick: int = Query(0, description="Simulation tick number"),
 ):
     """
     Run agent reasoning across the entire fleet with streaming responses.
-    
+
     Results are sent rack-by-rack as they complete, so users see progress in real-time.
     """
+    from app.utils.device_id import get_or_create_device_id
+
+    device_id = get_or_create_device_id(request.headers.get("X-Device-ID"))
+    device_lat_str = request.headers.get("X-Device-Latitude")
+    device_lon_str = request.headers.get("X-Device-Longitude")
+
+    device_lat = float(device_lat_str) if device_lat_str else None
+    device_lon = float(device_lon_str) if device_lon_str else None
+
+    logger.info(f"Fleet reasoning stream for device_id: {device_id}, location: {device_lat}, {device_lon}")
+
     def event_generator():
         try:
             for event in fleet_orchestrator.run_fleet_reasoning_streaming(
                 use_memory=use_memory,
                 tick=tick,
+                device_lat=device_lat,
+                device_lon=device_lon,
             ):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as e:
@@ -211,17 +242,28 @@ def run_fleet_reasoning_stream(
 
 @router.post("/fleet/reason/rack/{rack_id}")
 def run_single_rack_reasoning(
+    request: Request,
     rack_id: str,
     use_memory: bool = Query(True, description="Enable memory retrieval for agents"),
     db: Session = Depends(get_db),
 ):
     """
     Run agent reasoning for a specific rack only.
-    
+
     This allows users to click on individual rack cards to run reasoning for that specific rack.
     Uses optimized fleet reasoning internally for better performance.
     Saves results to database for persistence.
     """
+    from app.utils.device_id import get_or_create_device_id
+
+    device_id = get_or_create_device_id(request.headers.get("X-Device-ID"))
+    device_lat_str = request.headers.get("X-Device-Latitude")
+    device_lon_str = request.headers.get("X-Device-Longitude")
+
+    device_lat = float(device_lat_str) if device_lat_str else None
+    device_lon = float(device_lon_str) if device_lon_str else None
+
+    logger.info(f"Single rack reasoning for rack_id: {rack_id}, device_id: {device_id}, location: {device_lat}, {device_lon}")
     try:
         start_time = time.time()
         

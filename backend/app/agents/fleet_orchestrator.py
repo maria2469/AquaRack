@@ -120,12 +120,14 @@ class FleetOrchestrator:
         rack_profile: Dict[str, Any],
         telemetry_data: Dict[str, Any],
         use_memory: bool = True,
+        device_lat: float = None,
+        device_lon: float = None,
     ) -> Dict[str, Any]:
         """Run agent reasoning for a single rack."""
         rack_id = rack_profile["rack_id"]
         device_id = rack_profile["device_id"]
-        
-        logger.info(f"Running reasoning for {rack_id} (device_id: {device_id})")
+
+        logger.info(f"Running reasoning for {rack_id} (device_id: {device_id}) location: {device_lat}, {device_lon}")
         
         # Create twin state
         twin_state = {
@@ -138,8 +140,8 @@ class FleetOrchestrator:
             "thermal_load_kw": (telemetry_data["cpu_pct"] + (telemetry_data["gpu_pct"] or 0)) * 0.05,
         }
         
-        # Run water model
-        weather = get_current_weather(db)
+        # Run water model with location-aware weather
+        weather = get_current_weather(db, lat=device_lat, lon=device_lon, ignore_cached_telemetry=True)
         w_model = WaterModel(
             ambient_temp=weather["temperature"],
             humidity=weather["humidity"],
@@ -200,14 +202,22 @@ class FleetOrchestrator:
         self,
         use_memory: bool = True,
         tick: int = 0,
+        device_lat: float = None,
+        device_lon: float = None,
     ):
         """
         Run agent reasoning for each rack and yield results as they complete.
-        
+
         Streaming approach:
         1. Run full agent reasoning for laptop (Rack 1) - yield immediately
         2. Apply same decision to all digital twins with profile variations - yield each as computed
         3. User sees results rack by rack without waiting for all to complete
+
+        Args:
+            use_memory: Whether to use memory for reasoning
+            tick: Simulation tick number
+            device_lat: Optional device latitude for weather (overrides config)
+            device_lon: Optional device longitude for weather (overrides config)
         """
         db = SessionLocal()
         try:
@@ -237,8 +247,8 @@ class FleetOrchestrator:
                 mode=ModeEnum.laptop,
             )
             
-            # Run water model
-            weather = get_current_weather(db)
+            # Run water model with location-aware weather
+            weather = get_current_weather(db, lat=device_lat, lon=device_lon, ignore_cached_telemetry=True)
             w_model = WaterModel(
                 ambient_temp=weather["temperature"],
                 humidity=weather["humidity"],
@@ -381,16 +391,24 @@ class FleetOrchestrator:
         self,
         use_memory: bool = True,
         tick: int = 0,
+        device_lat: float = None,
+        device_lon: float = None,
     ) -> Dict[str, Any]:
         """
         Run agent reasoning ONCE and apply to entire fleet of 100 racks.
-        
+
         Optimized approach:
         1. Run full agent reasoning for laptop (Rack 1)
         2. Apply same decision to all digital twins with profile variations
         3. Calculate fleet-wide metrics based on profile multipliers
-        
+
         This is 100x faster than running reasoning for each rack individually.
+
+        Args:
+            use_memory: Whether to use memory for reasoning
+            tick: Simulation tick number
+            device_lat: Optional device latitude for weather (overrides config)
+            device_lon: Optional device longitude for weather (overrides config)
         """
         db = SessionLocal()
         try:
@@ -420,8 +438,8 @@ class FleetOrchestrator:
                 mode=ModeEnum.laptop,
             )
             
-            # Run water model
-            weather = get_current_weather(db)
+            # Run water model with location-aware weather
+            weather = get_current_weather(db, lat=device_lat, lon=device_lon, ignore_cached_telemetry=True)
             w_model = WaterModel(
                 ambient_temp=weather["temperature"],
                 humidity=weather["humidity"],

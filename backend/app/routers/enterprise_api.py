@@ -12,7 +12,7 @@ Provides production-ready APIs:
 """
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Body, Request
 from sqlalchemy.orm import Session
@@ -32,6 +32,40 @@ from app.utils.device_id import get_or_create_device_id
 from app.services.weather_services import get_current_weather
 from app.db_retry import crdb_retry
 from app.utils.device_id import get_or_create_device_id, validate_device_id
+
+def extract_device_location(request: Request) -> tuple:
+    """
+    Extract device location from request headers if available.
+    Returns (latitude, longitude) tuple or (None, None) if not provided.
+    """
+    lat_str = request.headers.get("X-Device-Latitude")
+    lon_str = request.headers.get("X-Device-Longitude")
+
+    if lat_str and lon_str:
+        try:
+            return (float(lat_str), float(lon_str))
+        except (ValueError, TypeError):
+            logger.warning("Invalid device location in headers: lat=%s, lon=%s", lat_str, lon_str)
+
+    return (None, None)
+
+
+def get_location_aware_weather(db, device_lat: float = None, device_lon: float = None, ignore_cached: bool = True) -> dict:
+    """
+    Helper function to get location-aware weather with consistent error handling.
+    Centralizes weather fetching logic for consistency across endpoints.
+    """
+    try:
+        return get_current_weather(db, lat=device_lat, lon=device_lon, ignore_cached_telemetry=ignore_cached)
+    except Exception as e:
+        logger.error(f"Weather fetch failed for location ({device_lat}, {device_lon}): {e}")
+        # Return fallback values from config
+        return {
+            "temperature": settings.DEFAULT_AMBIENT_TEMP_C,
+            "humidity": settings.DEFAULT_HUMIDITY_PCT,
+            "source": "fallback_error",
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+        }
 
 logger = logging.getLogger("aquarack.enterprise_api")
 
@@ -104,13 +138,17 @@ def _resolve_historical_citations(db: Session, cited_memory_ids: List[str]) -> L
 
 
 @router.get("/telemetry/latest")
-def get_latest_telemetry(db: Session = Depends(get_db)):
+def get_latest_telemetry(request: Request, db: Session = Depends(get_db)):
     """GET /api/telemetry/latest - Retrieve current live laptop & weather telemetry."""
+    device_id = get_or_create_device_id(request.headers.get("X-Device-ID"))
+    device_lat, device_lon = extract_device_location(request)
+    logger.info(f"Fetching latest telemetry for device_id: {device_id}, location: {device_lat}, {device_lon}")
+
     row = db.query(models.Telemetry).order_by(models.Telemetry.timestamp.desc()).first()
     if not row:
         # Generate initial telemetry if none exists — still uses real
         # current weather rather than a hardcoded reading.
-        weather = get_current_weather(db)
+        weather = get_location_aware_weather(db, device_lat, device_lon)
         _log_weather_provenance(
             "telemetry/latest (seed row)",
             source=weather["source"],
@@ -133,15 +171,15 @@ def get_latest_telemetry(db: Session = Depends(get_db)):
         db.commit()
         db.refresh(row)
     else:
-        # Use cached weather (15-minute cache) to avoid excessive API calls
-        # Only refresh if weather data is missing
-        if row.weather_temp is None or row.humidity is None:
-            weather = get_current_weather(db)
+        # Use device-specific location weather when available, otherwise use cached telemetry weather
+        # Only refresh if weather data is missing or device location is provided
+        if row.weather_temp is None or row.humidity is None or (device_lat and device_lon):
+            weather = get_location_aware_weather(db, device_lat, device_lon)
             row.weather_temp = weather["temperature"]
             row.humidity = weather["humidity"]
             db.commit()
             _log_weather_provenance(
-                "telemetry/latest (existing row - weather attached)",
+                "telemetry/latest (existing row - weather attached/refreshed)",
                 source=weather["source"],
                 ambient_temp=weather["temperature"],
                 humidity=weather["humidity"],
@@ -171,11 +209,15 @@ def get_latest_telemetry(db: Session = Depends(get_db)):
 
 @router.get("/incidents")
 def list_incidents(
+    request: Request,
     severity: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
     """GET /api/incidents - Retrieve historical incidents."""
+    device_lat, device_lon = extract_device_location(request)
+    logger.info(f"Fetching incidents for location: {device_lat}, {device_lon}")
+
     q = db.query(models.Incident)
     if severity:
         q = q.filter(models.Incident.severity == severity)
@@ -183,7 +225,7 @@ def list_incidents(
     if not incidents:
         # Seed initial incident for demo if empty
         t_row = db.query(models.Telemetry).first()
-        weather = get_current_weather(db)
+        weather = get_location_aware_weather(db, device_lat, device_lon)
         _log_weather_provenance(
             "incidents (seed)",
             source=weather["source"],
@@ -263,12 +305,13 @@ def generate_agent_reasoning(
     """
     telemetry_id = body.get("telemetry_id")
     use_memory = body.get("use_memory", True)
-    
+
     # Get device_id from request to ensure consistency with memory queries
     device_id = get_or_create_device_id(request.headers.get("X-Device-ID") if request else None)
-    
+    device_lat, device_lon = extract_device_location(request) if request else (None, None)
+
     logger.info(
-        f"POST /api/reason - telemetry_id={telemetry_id} use_memory={use_memory} device_id={device_id}"
+        f"POST /api/reason - telemetry_id={telemetry_id} use_memory={use_memory} device_id={device_id} location={device_lat},{device_lon}"
     )
     
     logger.info(f"🧠 REASONING START: device_id={device_id}, use_memory={use_memory}")
@@ -307,7 +350,7 @@ def generate_agent_reasoning(
             humidity=humidity,
         )
     else:
-        weather = get_current_weather(db)
+        weather = get_location_aware_weather(db, device_lat, device_lon)
         ambient_temp = weather["temperature"]
         humidity = weather["humidity"]
         _log_weather_provenance(
@@ -427,6 +470,7 @@ def _format_compare_side(result: Dict[str, Any], *, use_memory: bool) -> Dict[st
 
 @router.post("/compare")
 def compare_memory_benchmark(
+    request: Request,
     body: Dict[str, Any] = Body(default={}),
     db: Session = Depends(get_db),
 ):
@@ -441,6 +485,10 @@ def compare_memory_benchmark(
     """
     from app.models_ext import Episode
 
+    device_id = get_or_create_device_id(request.headers.get("X-Device-ID"))
+    device_lat, device_lon = extract_device_location(request)
+    logger.info(f"Compare benchmark for device_id: {device_id}, location: {device_lat}, {device_lon}")
+
     telemetry_id = body.get("telemetry_id")
     pipeline = run_full_pipeline(db, telemetry_id)
     reading = pipeline["reading"]
@@ -448,11 +496,11 @@ def compare_memory_benchmark(
     water_out = pipeline["water_out"]
     open_incidents = db.query(models.Incident).filter(models.Incident.resolved.is_(False)).count()
 
-    if reading.weather_temp is not None and reading.humidity is not None:
+    if reading.weather_temp is not None and reading.humidity is not None and not (device_lat and device_lon):
         ambient_temp = reading.weather_temp
         humidity = reading.humidity
     else:
-        weather = get_current_weather(db)
+        weather = get_location_aware_weather(db, device_lat, device_lon)
         ambient_temp = weather["temperature"]
         humidity = weather["humidity"]
 
@@ -820,7 +868,7 @@ def get_comprehensive_memory_stats(
         raise HTTPException(status_code=500, detail=f"Failed to retrieve comprehensive stats: {str(e)}")
 
 
-def _fetch_enterprise_dashboard(db: Session) -> dict:
+def _fetch_enterprise_dashboard(db: Session, device_lat: float = None, device_lon: float = None, use_location_weather: bool = False) -> dict:
     """All DB reads for /api/dashboard — isolated for CRDB retry."""
     t_row = db.query(models.Telemetry).order_by(models.Telemetry.timestamp.desc()).first()
 
@@ -832,8 +880,8 @@ def _fetch_enterprise_dashboard(db: Session) -> dict:
             humidity=t_row.humidity,
         )
 
-    # OpenDC scaling Racks 2-100
-    opendc_fleet = simulate_scaled_racks(db, t_row, num_racks=100) if t_row else {}
+    # OpenDC scaling Racks 2-100 with location-aware weather
+    opendc_fleet = simulate_scaled_racks(db, t_row, num_racks=100, device_lat=device_lat, device_lon=device_lon) if t_row else {}
 
     incidents_count = db.query(models.Incident).count()
     recommendations_count = db.query(models.Recommendation).count()
@@ -856,13 +904,19 @@ def _fetch_enterprise_dashboard(db: Session) -> dict:
 
 
 @router.get("/dashboard")
-def get_dashboard_summary(db: Session = Depends(get_db)):
+def get_dashboard_summary(request: Request, db: Session = Depends(get_db)):
     """GET /api/dashboard - Aggregated enterprise metrics for React dashboard."""
+    device_id = get_or_create_device_id(request.headers.get("X-Device-ID"))
+    device_lat, device_lon = extract_device_location(request)
+    logger.info(f"Fetching dashboard for device_id: {device_id}, location: {device_lat}, {device_lon}")
+
     # Fetch live telemetry (also retried inside get_latest_telemetry via crdb_retry)
-    telemetry = crdb_retry(lambda db: get_latest_telemetry(db), db)
+    telemetry = crdb_retry(lambda db: get_latest_telemetry(request, db), db)
 
     # Fetch all remaining dashboard data with automatic CRDB retry
-    data = crdb_retry(_fetch_enterprise_dashboard, db)
+    # Use location-aware weather when device location is provided
+    use_location_weather = device_lat is not None and device_lon is not None
+    data = crdb_retry(lambda db: _fetch_enterprise_dashboard(db, device_lat, device_lon, use_location_weather), db)
 
     latest_rec = data["latest_rec"]
     recommendations_count = data["recommendations_count"]

@@ -98,6 +98,121 @@ export { getDeviceId };
 // Add device ID to all requests
 const deviceId = getDeviceId();
 api.defaults.headers.common["X-Device-ID"] = deviceId;
+
+// Location management for dynamic weather per device
+const LOCATION_KEY = "rackpulse_device_location";
+const LOCATION_CACHE_TTL = 3600000; // 1 hour cache
+const LOCATION_TIMEOUT = 5000; // 5 second timeout for geolocation
+
+/**
+ * Get the user's current location using browser geolocation API.
+ * Returns coordinates {latitude, longitude} or null if denied/unavailable.
+ */
+const getUserLocation = () => {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      console.warn("Geolocation not supported by browser");
+      resolve(null);
+      return;
+    }
+
+    // Set timeout to avoid hanging
+    const timeoutId = setTimeout(() => {
+      console.warn("Geolocation request timed out");
+      const cached = localStorage.getItem(LOCATION_KEY);
+      resolve(cached ? JSON.parse(cached) : null);
+    }, LOCATION_TIMEOUT);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        clearTimeout(timeoutId);
+        const location = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          timestamp: Date.now()
+        };
+        localStorage.setItem(LOCATION_KEY, JSON.stringify(location));
+        resolve(location);
+      },
+      (error) => {
+        clearTimeout(timeoutId);
+        console.warn("Geolocation access denied or unavailable:", error.message);
+        // Try to get cached location
+        const cached = localStorage.getItem(LOCATION_KEY);
+        resolve(cached ? JSON.parse(cached) : null);
+      },
+      {
+        enableHighAccuracy: false,
+        timeout: LOCATION_TIMEOUT,
+        maximumAge: LOCATION_CACHE_TTL // 1 hour cache
+      }
+    );
+  });
+};
+
+/**
+ * Get device location for weather requests.
+ * Returns cached location or attempts to get current location.
+ */
+const getDeviceLocation = async () => {
+  // Check cache first
+  const cached = localStorage.getItem(LOCATION_KEY);
+  if (cached) {
+    try {
+      const location = JSON.parse(cached);
+      // Cache is valid for 1 hour
+      const cacheTime = location.timestamp || 0;
+      if (Date.now() - cacheTime < LOCATION_CACHE_TTL) {
+        return { latitude: location.latitude, longitude: location.longitude };
+      }
+    } catch (e) {
+      console.warn("Invalid cached location, refreshing");
+    }
+  }
+
+  // Get fresh location
+  const location = await getUserLocation();
+  if (location) {
+    location.timestamp = Date.now();
+    localStorage.setItem(LOCATION_KEY, JSON.stringify(location));
+  }
+  return location;
+};
+
+// Store location promise to avoid multiple concurrent requests
+let locationPromise = null;
+
+/**
+ * Get device location with promise caching to avoid multiple concurrent requests.
+ */
+const getDeviceLocationCached = async () => {
+  if (locationPromise) {
+    return locationPromise;
+  }
+  locationPromise = getDeviceLocation();
+  const result = await locationPromise;
+  locationPromise = null;
+  return result;
+};
+
+// Add location to requests when available
+api.interceptors.request.use(async (config) => {
+  const location = await getDeviceLocationCached();
+  if (location && location.latitude && location.longitude) {
+    config.headers["X-Device-Latitude"] = location.latitude.toString();
+    config.headers["X-Device-Longitude"] = location.longitude.toString();
+  }
+  return config;
+});
+
+reasonApi.interceptors.request.use(async (config) => {
+  const location = await getDeviceLocationCached();
+  if (location && location.latitude && location.longitude) {
+    config.headers["X-Device-Latitude"] = location.latitude.toString();
+    config.headers["X-Device-Longitude"] = location.longitude.toString();
+  }
+  return config;
+});
 reasonApi.defaults.headers.common["X-Device-ID"] = deviceId;
 
 // Override baseURL for development or production

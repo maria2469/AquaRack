@@ -339,7 +339,7 @@ def submit_job(db, spec: dict) -> SimulationJob:
     return job
 
 
-def simulate_scaled_racks(db, laptop_telemetry: "models.Telemetry", num_racks: int = 100) -> dict:
+def simulate_scaled_racks(db, laptop_telemetry: "models.Telemetry", num_racks: int = 100, device_lat: float = None, device_lon: float = None) -> dict:
     """
     Scales single laptop telemetry (Rack 1) across Racks 2 to num_racks
     using the same fixed-per-rack-profile approach as _run_job, instead of
@@ -350,13 +350,20 @@ def simulate_scaled_racks(db, laptop_telemetry: "models.Telemetry", num_racks: i
     collection time); calling get_current_weather here as a fallback
     keeps the Weather table populated even for telemetry rows collected
     before weather was wired in.
+
+    Args:
+        db: Database session
+        laptop_telemetry: Real laptop telemetry to base simulations on
+        num_racks: Number of racks to simulate (default 100)
+        device_lat: Optional device latitude for weather (overrides config)
+        device_lon: Optional device longitude for weather (overrides config)
     """
     base_cpu = laptop_telemetry.cpu_pct or 0.0
     base_gpu = laptop_telemetry.gpu_pct or 0.0
     base_water = laptop_telemetry.predicted_water_usage or 1.2
 
-    if laptop_telemetry.weather_temp is None or laptop_telemetry.humidity is None:
-        get_current_weather(db)
+    if laptop_telemetry.weather_temp is None or laptop_telemetry.humidity is None or (device_lat and device_lon):
+        get_current_weather(db, lat=device_lat, lon=device_lon, ignore_cached_telemetry=True)
 
     rng = random.Random(f"scaled-{laptop_telemetry.telemetry_id}")
 
